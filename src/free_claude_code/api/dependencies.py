@@ -45,12 +45,29 @@ async def resolve_provider(
     return provider
 
 
+def is_proxy_auth_required(settings: Settings) -> bool:
+    """Determine whether external API gateway proxy authentication is required."""
+    if settings.proxy_auth_enabled:
+        return True
+    if os.getenv("MASTER_API_TOKEN", "").strip():
+        return True
+    if os.getenv("PROXY_AUTH_TOKEN", "").strip():
+        return True
+    if (
+        os.getenv("FCC_CLOUD_DEPLOYMENT", "").lower() in ("1", "true", "yes")
+        or os.getenv("VERCEL")
+        or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+    ):
+        return True
+    return False
+
+
 def require_proxy_auth(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> None:
     """Require the configured proxy token as HTTP bearer authorization."""
-    if not settings.proxy_auth_enabled:
+    if not is_proxy_auth_required(settings):
         return
 
     authorization = request.headers.get("authorization")
@@ -76,7 +93,7 @@ def require_anthropic_proxy_auth(
     settings: Settings = Depends(get_settings),
 ) -> None:
     """Require Bearer or Anthropic ``x-api-key`` proxy authentication."""
-    if not settings.proxy_auth_enabled:
+    if not is_proxy_auth_required(settings):
         return
 
     authorization = request.headers.get("authorization")
@@ -119,7 +136,7 @@ def require_gemini_proxy_auth(
         raise HTTPException(
             status_code=400, detail="Repeated key query credentials are unsupported"
         )
-    if not settings.proxy_auth_enabled:
+    if not is_proxy_auth_required(settings):
         return
     credential = request.headers.get("authorization")
     bearer = credential is not None
@@ -152,11 +169,18 @@ def _proxy_token_matches(
             return False
         token = parts[1].strip()
 
-    valid_tokens = [configured_token] if configured_token else []
-    for env_var in ("PROXY_AUTH_TOKEN", "ADMIN_AUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"):
+    valid_tokens = [configured_token] if (configured_token and configured_token != "freecc") else []
+    for env_var in (
+        "MASTER_API_TOKEN",
+        "PROXY_AUTH_TOKEN",
+        "ADMIN_AUTH_TOKEN",
+        "ANTHROPIC_AUTH_TOKEN",
+    ):
         env_val = os.getenv(env_var, "").strip()
         if env_val and env_val not in valid_tokens:
             valid_tokens.append(env_val)
+    if not valid_tokens and configured_token:
+        valid_tokens.append(configured_token)
 
     return bool(token) and any(
         secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))

@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from fastapi.exceptions import RequestValidationError
 from loguru import logger
 from pydantic import ValidationError
@@ -377,9 +378,18 @@ async def probe_count_tokens(_auth=Depends(require_anthropic_proxy_auth)):
 
 @router.get("/")
 async def root(
+    request: Request,
     settings: Settings = Depends(get_settings),
-    _auth=Depends(require_proxy_auth),
 ):
+    accept = request.headers.get("accept", "")
+    if "text/html" in accept and not accept.startswith("*/*"):
+        from .owner_auth import is_authenticated_owner
+
+        if is_authenticated_owner(request):
+            return RedirectResponse(url="/admin", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
+
+    require_proxy_auth(request, settings)
     return {
         "status": "ok",
         "provider": parse_provider_type(settings.model),

@@ -63,6 +63,7 @@ def _get_configured_admin_tokens() -> list[str]:
     for var in (
         "ADMIN_AUTH_TOKEN",
         "FCC_ADMIN_TOKEN",
+        "MASTER_API_TOKEN",
         "PROXY_AUTH_TOKEN",
         "ANTHROPIC_AUTH_TOKEN",
     ):
@@ -90,11 +91,22 @@ def _is_cloud_environment() -> bool:
         or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
         or os.getenv("ADMIN_AUTH_TOKEN")
         or os.getenv("FCC_ADMIN_TOKEN")
+        or os.getenv("MASTER_API_TOKEN")
+        or os.getenv("OWNER_EMAIL")
     )
 
 
 def is_authorized_admin(request: Request) -> bool:
     """Verify whether a request carries a valid admin credential."""
+    # 0. Check single-owner session cookie
+    try:
+        from .owner_auth import is_authenticated_owner
+
+        if is_authenticated_owner(request):
+            return True
+    except Exception:
+        pass
+
     tokens = _get_configured_admin_tokens()
     if not tokens:
         return False
@@ -145,10 +157,19 @@ def require_loopback_admin(request: Request) -> None:
         return
 
     # If not local loopback, verify cloud / remote authentication
-    tokens = _get_configured_admin_tokens()
-    if _is_cloud_environment() and tokens:
-        if is_authorized_admin(request):
-            return
+    if is_authorized_admin(request):
+        return
+
+    if _is_cloud_environment():
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept and request.method == "GET":
+            from urllib.parse import quote
+
+            next_path = quote(str(request.url.path))
+            raise HTTPException(
+                status_code=307,
+                headers={"Location": f"/login?next={next_path}"},
+            )
         raise HTTPException(
             status_code=401,
             detail=(
