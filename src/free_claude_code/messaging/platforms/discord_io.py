@@ -176,7 +176,7 @@ class DiscordMessenger:
             try:
                 msg = await channel.fetch_message(int(message_id))
                 await msg.delete()
-            except discord.NotFound, discord.Forbidden:
+            except (discord.NotFound, discord.Forbidden):
                 pass
 
         await self._with_retry(_delete)

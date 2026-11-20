@@ -1,0 +1,26 @@
+services:
+  free-claude-code:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: free-claude-code-cloud
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      - FCC_CLOUD_DEPLOYMENT=1
+      - PROXY_AUTH_ENABLED=true
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-freecc_secret_token}
+      - ADMIN_AUTH_TOKEN=${ADMIN_AUTH_TOKEN:-admin_secret_token}
+      - MODEL=${MODEL:-nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b}
+      # Provider keys (set in .env or your host environment)
+      - NVIDIA_NIM_API_KEY=${NVIDIA_NIM_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - fcc-data:/home/appuser/.fcc
+
+volumes:
+  fcc-data:
+    driver: local

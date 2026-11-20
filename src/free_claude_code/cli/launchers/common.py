@@ -85,7 +85,7 @@ def _probe_proxy(proxy_root_url: str, *, deadline: float) -> ProxyProbe:
                     timeout=min(PROXY_PREFLIGHT_TIMEOUT_SECONDS, remaining),
                 ):
                     pass
-            except ConnectionRefusedError, TimeoutError:
+            except (ConnectionRefusedError, TimeoutError):
                 return ProxyProbe(ProxyState.UNREACHABLE, str(reason))
             except OSError as exc:
                 return ProxyProbe(ProxyState.NETWORK_ERROR, str(exc))
@@ -208,7 +208,7 @@ def _stop_owned_process(process: subprocess.Popen[bytes]) -> None:
         try:
             process.kill()
             process.wait(timeout=2)
-        except OSError, subprocess.TimeoutExpired:
+        except (OSError, subprocess.TimeoutExpired):
             pass
     except OSError:
         pass

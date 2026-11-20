@@ -26,7 +26,7 @@ from free_claude_code.config.model_refs import split_provider_model_ref
 from free_claude_code.core.json_types import JsonObject, JsonValue
 
 from .admin_routes import admin_page_response
-from .admin_security import require_loopback_admin
+from .admin_security import is_authorized_admin, require_loopback_admin
 from .dependencies import get_services
 from .markdown import render_markdown
 from .ports import ApiServices
@@ -81,7 +81,18 @@ def _code(services: ApiServices) -> CodeApplicationPort:
 @router.get("/admin/code", include_in_schema=False)
 @router.get("/admin/code/{session_id}", include_in_schema=False)
 def code_page(request: Request, session_id: str | None = None):
-    return admin_page_response()
+    response = admin_page_response()
+    query_token = request.query_params.get("token", "").strip()
+    if query_token and is_authorized_admin(request):
+        response.set_cookie(
+            key="fcc_admin_token",
+            value=query_token,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.scheme == "https",
+            path="/",
+        )
+    return response
 
 
 @router.get("/admin/api/code/bootstrap")
@@ -368,7 +379,7 @@ def _decode_cursor(cursor: str | None) -> tuple[int, str] | None:
         ):
             raise ValueError
         return value[0], value[1]
-    except ValueError, UnicodeError:
+    except (ValueError, UnicodeError):
         raise CodeValidationError("Invalid session page cursor.") from None
 
 
@@ -382,5 +393,5 @@ def _decode_item_cursor(cursor: str) -> tuple[int, int]:
         ):
             raise ValueError
         return value[0], value[1]
-    except ValueError, UnicodeError:
+    except (ValueError, UnicodeError):
         raise CodeValidationError("Invalid transcript page cursor.") from None

@@ -15,13 +15,44 @@
 [![Formatter: Ruff](https://img.shields.io/badge/Formatter-ruff-bf4b00.svg?style=for-the-badge)](https://github.com/astral-sh/ruff)
 [![Logging: Loguru](https://img.shields.io/badge/logging-loguru-00695c.svg?style=for-the-badge)](https://github.com/Delgan/loguru)
 
-[Quick Start](#quick-start) · [Providers](#choose-a-provider) · [Integrations](#integrations) · [API](#use-the-api-directly) · [Phone](#use-from-your-phone) · [Manage](#manage-your-installation)
+[Quick Start](#quick-start) · [Cloud Deployment](#cloud-deployment) · [Providers](#choose-a-provider) · [Integrations](#integrations) · [API](#use-the-api-directly) · [Phone](#use-from-your-phone) · [Manage](#manage-your-installation)
 
 </div>
 
 <p align="center">
   <em>Independent open-source project. Not affiliated with or endorsed by Anthropic. Claude and Claude Code are trademarks of Anthropic.</em>
 </p>
+
+<a id="cloud-deployment"></a>
+
+## ☁️ Cloud & Serverless Deployment (Laptop-Free Mode)
+
+Free Claude Code Cloud allows you to host the proxy on **Vercel** or in a **Docker Container** so that your coding agents, IDEs, and tools can access your models 24/7 without needing your laptop to stay powered on.
+
+- **Vercel Serverless Ready:** Uses `@vercel/python` with native ASGI routing via `api/index.py`.
+- **Zero Cost Architecture:** Operates completely on free tiers (Vercel Hobby, NVIDIA NIM free tier, OpenRouter, Google AI Studio).
+- **Hardened Cloud Security:** Enforced Bearer token proxy authentication and cloud Admin UI session protection.
+- **No Database Required:** Stateless core proxy; zero external database or Supabase dependencies.
+
+### 📚 Cloud Documentation
+- [**Deployment Guide**](DEPLOYMENT_GUIDE.md) — Step-by-step Vercel and Docker deployment walkthrough.
+- [**Architecture Design**](ARCHITECTURE.md) — Deep architectural analysis, model evaluation, and request routing.
+- [**Security Audit**](SECURITY_AUDIT.md) — Threat modeling, auth gates, and security verification.
+- [**Environment Variables**](ENVIRONMENT_VARIABLES.md) — Complete environment variable reference.
+- [**Test Report**](TEST_REPORT.md) — 263 passing unit, security, and cloud verification tests.
+
+### Quick Cloud Setup (Vercel)
+1. Push this repository to your private GitHub account (`https://github.com/jaswant-0707/free-claude-code-cloud`).
+2. Import the project into your [Vercel Dashboard](https://vercel.com).
+3. Set the required environment variables:
+   - `FCC_CLOUD_DEPLOYMENT=1`
+   - `PROXY_AUTH_ENABLED=true`
+   - `ANTHROPIC_AUTH_TOKEN=<your_secret_token>`
+   - `ADMIN_AUTH_TOKEN=<your_admin_token>`
+   - `MODEL=nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b`
+   - Provider API keys (e.g. `NVIDIA_NIM_API_KEY`, `OPENROUTER_API_KEY`, etc.)
+4. Deploy! Your proxy is live at `https://your-deployment.vercel.app`.
+5. Access your cloud Admin UI at `https://your-deployment.vercel.app/admin?token=<your_admin_token>`.
 
 ## Features
 

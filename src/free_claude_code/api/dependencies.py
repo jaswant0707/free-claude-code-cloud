@@ -1,5 +1,6 @@
 """FastAPI dependencies for the explicit runtime service boundary."""
 
+import os
 import secrets
 
 from fastapi import Depends, HTTPException, Request
@@ -151,7 +152,13 @@ def _proxy_token_matches(
             return False
         token = parts[1].strip()
 
-    return bool(token) and secrets.compare_digest(
-        token.encode("utf-8"),
-        configured_token.encode("utf-8"),
+    valid_tokens = [configured_token] if configured_token else []
+    for env_var in ("PROXY_AUTH_TOKEN", "ADMIN_AUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"):
+        env_val = os.getenv(env_var, "").strip()
+        if env_val and env_val not in valid_tokens:
+            valid_tokens.append(env_val)
+
+    return bool(token) and any(
+        secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
+        for expected in valid_tokens
     )

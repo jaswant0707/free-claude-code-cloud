@@ -31,7 +31,11 @@ from free_claude_code.core.trace import (
 )
 from free_claude_code.core.version import package_version
 
-from .admin_cache import AdminNoStoreMiddleware, attach_admin_no_store
+from .admin_cache import (
+    AdminNoStoreMiddleware,
+    SecurityHeadersMiddleware,
+    attach_admin_no_store,
+)
 from .admin_routes import router as admin_router
 from .code_sessions_routes import router as code_router
 from .generation_paths import generation_api
@@ -52,6 +56,7 @@ def create_app(services: ApiServices) -> FastAPI:
     """Create the HTTP adapter around explicitly supplied runtime services."""
     app = FastAPI(title="Claude Code Proxy", version=package_version())
     app.state.services = services
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(AdminNoStoreMiddleware)
     app.add_middleware(ClientRequestLifetimeMiddleware)
     app.add_middleware(RequestOutcomeMiddleware)

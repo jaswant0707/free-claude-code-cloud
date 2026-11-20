@@ -32,7 +32,7 @@ from free_claude_code.config.provider_catalog import (
 from free_claude_code.core.json_types import JsonObject, JsonValue
 from free_claude_code.core.version import package_version
 
-from .admin_security import require_loopback_admin
+from .admin_security import is_authorized_admin, require_loopback_admin
 from .dependencies import get_services
 from .ports import ApiServices
 
@@ -114,7 +114,18 @@ def admin_page_response() -> HTMLResponse:
 @router.get("/admin/integrations", include_in_schema=False)
 def admin_page(request: Request):
     require_loopback_admin(request)
-    return admin_page_response()
+    response = admin_page_response()
+    query_token = request.query_params.get("token", "").strip()
+    if query_token and is_authorized_admin(request):
+        response.set_cookie(
+            key="fcc_admin_token",
+            value=query_token,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.scheme == "https",
+            path="/",
+        )
+    return response
 
 
 @router.get("/admin/assets/{version}/{filename:path}", include_in_schema=False)

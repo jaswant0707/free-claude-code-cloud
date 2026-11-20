@@ -1,5 +1,6 @@
 """Shared filesystem paths for Free Claude Code configuration."""
 
+import os
 from pathlib import Path
 
 FCC_CONFIG_DIRNAME = ".fcc"
@@ -27,7 +28,11 @@ CODE_LOCK_FILENAME = "code.lock"
 
 def config_dir_path() -> Path:
     """Return the default user config directory."""
-
+    override = os.getenv("FCC_CONFIG_DIR")
+    if override:
+        return Path(override)
+    if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        return Path("/tmp") / FCC_CONFIG_DIRNAME
     return Path.home() / FCC_CONFIG_DIRNAME
 
 

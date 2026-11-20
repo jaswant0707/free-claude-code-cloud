@@ -1,19 +1,75 @@
-__pycache__
-.claude
-.cursor
-.pytest_cache
-.ruff_cache
-.serena
-.venv
-agent_workspace
-.env
-/logs/
-server.log
-/server.*.log
-debug-*.log
+# Python & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.ruff_cache/
 .coverage
-llama_cache
+.coverage.*
+htmlcov/
 .smoke-results
 /test-results/
-.vscode
+
+# Editor & IDE Directories
+.vscode/
+.idea/
+.claude/
+.cursor/
+.serena/
+
+# Environment Variables & Secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+
+# Vercel & Deployment Caches
+.vercel/
+
+# Local Logging & Temporary Files
+logs/
+/logs/
+server.log
+server.*.log
+/server.*.log
+debug-*.log
+agent_workspace/
+llama_cache/
+tmp/
+.fcc/
+
+# SQLite Databases
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Build Artifacts
 /src/free_claude_code/assets/macos/fcc-desktop-*

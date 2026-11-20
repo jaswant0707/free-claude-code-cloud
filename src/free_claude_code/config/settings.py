@@ -1,5 +1,6 @@
 """Pure, validated application settings schema."""
 
+import os
 from typing import Annotated
 
 from pydantic import (

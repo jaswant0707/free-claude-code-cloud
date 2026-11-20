@@ -1,6 +1,8 @@
-"""Shared local-only security boundary for Admin product surfaces."""
+"""Shared security boundary for Admin product surfaces with cloud authentication support."""
 
 import ipaddress
+import os
+import secrets
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException, Request
@@ -55,13 +57,109 @@ def _authority_is_local(authority: str | None) -> bool:
     )
 
 
-def require_loopback_admin(request: Request) -> None:
-    """Allow Admin access only from the local machine."""
+def _get_configured_admin_tokens() -> list[str]:
+    """Retrieve all valid admin authentication tokens from environment or settings."""
+    tokens = []
+    for var in (
+        "ADMIN_AUTH_TOKEN",
+        "FCC_ADMIN_TOKEN",
+        "PROXY_AUTH_TOKEN",
+        "ANTHROPIC_AUTH_TOKEN",
+    ):
+        val = os.getenv(var, "").strip()
+        if val and val not in tokens:
+            tokens.append(val)
+    if not tokens:
+        try:
+            from free_claude_code.config.loader import get_settings
 
+            token = get_settings().proxy_auth_token
+            if token and token not in tokens:
+                tokens.append(token)
+        except Exception:
+            pass
+    return tokens
+
+
+def _is_cloud_environment() -> bool:
+    """Check if the server is running in a cloud or remote deployment."""
+    return bool(
+        os.getenv("FCC_CLOUD_DEPLOYMENT", "").lower() in ("1", "true", "yes")
+        or os.getenv("ENABLE_CLOUD_ADMIN", "").lower() in ("1", "true", "yes")
+        or os.getenv("VERCEL")
+        or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+        or os.getenv("ADMIN_AUTH_TOKEN")
+        or os.getenv("FCC_ADMIN_TOKEN")
+    )
+
+
+def is_authorized_admin(request: Request) -> bool:
+    """Verify whether a request carries a valid admin credential."""
+    tokens = _get_configured_admin_tokens()
+    if not tokens:
+        return False
+
+    # 1. Check Authorization: Bearer <token>
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+        for expected in tokens:
+            if secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8")):
+                return True
+
+    # 2. Check Cookie: fcc_admin_token
+    cookie_token = request.cookies.get("fcc_admin_token", "").strip()
+    if cookie_token:
+        for expected in tokens:
+            if secrets.compare_digest(cookie_token.encode("utf-8"), expected.encode("utf-8")):
+                return True
+
+    # 3. Check Query parameter: ?token=
+    query_token = request.query_params.get("token", "").strip()
+    if query_token:
+        for expected in tokens:
+            if secrets.compare_digest(query_token.encode("utf-8"), expected.encode("utf-8")):
+                return True
+
+    # 4. Check x-api-key or x-admin-token headers
+    for header_name in ("x-admin-token", "x-api-key"):
+        header_token = request.headers.get(header_name, "").strip()
+        if header_token:
+            for expected in tokens:
+                if secrets.compare_digest(header_token.encode("utf-8"), expected.encode("utf-8")):
+                    return True
+
+    return False
+
+
+def require_loopback_admin(request: Request) -> None:
+    """Allow Admin access from local loopback or authenticated remote cloud users."""
     client_host = request.client.host if request.client else None
-    if not _is_loopback_host(client_host):
-        raise HTTPException(status_code=403, detail="Admin UI is local-only")
-    if not _authority_is_local(request.headers.get("host")):
-        raise HTTPException(status_code=403, detail="Admin UI is local-only")
-    if not _origin_is_local(request.headers.get("origin")):
-        raise HTTPException(status_code=403, detail="Admin UI is local-only")
+
+    # Check if this is a genuine local loopback connection
+    if (
+        _is_loopback_host(client_host)
+        and _authority_is_local(request.headers.get("host"))
+        and _origin_is_local(request.headers.get("origin"))
+    ):
+        return
+
+    # If not local loopback, verify cloud / remote authentication
+    tokens = _get_configured_admin_tokens()
+    if _is_cloud_environment() and tokens:
+        if is_authorized_admin(request):
+            return
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Unauthorized: Valid admin authentication token required. "
+                "Provide via Authorization Bearer header, fcc_admin_token cookie, or ?token= query parameter."
+            ),
+        )
+
+    # In local mode without cloud tokens, reject remote access
+    raise HTTPException(status_code=403, detail="Admin UI is local-only")
+
+
+# Canonical alias for cloud and modern routes
+require_cloud_admin = require_loopback_admin

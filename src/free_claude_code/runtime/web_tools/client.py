@@ -148,7 +148,7 @@ def _text_encoding(charset: str | None) -> str:
     if isinstance(charset, str) and charset:
         try:
             return codecs.lookup(charset).name
-        except LookupError, ValueError:
+        except (LookupError, ValueError):
             pass
     return "utf-8"
 

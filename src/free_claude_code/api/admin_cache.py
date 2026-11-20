@@ -35,6 +35,39 @@ class AdminNoStoreMiddleware:
         await self._app(scope, receive, send_without_cache)
 
 
+class SecurityHeadersMiddleware:
+    """Attach standard defensive security headers to HTTP responses."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        async def send_with_security_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                message = dict(message)
+                raw_headers = list(message.get("headers", ()))
+                headers = MutableHeaders(raw=raw_headers)
+                if "x-content-type-options" not in headers:
+                    headers["X-Content-Type-Options"] = "nosniff"
+                if "x-frame-options" not in headers:
+                    headers["X-Frame-Options"] = "DENY"
+                if "referrer-policy" not in headers:
+                    headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+                message["headers"] = raw_headers
+            await send(message)
+
+        await self._app(scope, receive, send_with_security_headers)
+
+
 def attach_admin_no_store(response: Response, *, path: str) -> None:
     """Attach the policy when an outer server-error boundary bypasses middleware."""
     if _is_admin_path(path):

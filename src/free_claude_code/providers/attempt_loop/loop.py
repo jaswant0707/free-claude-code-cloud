@@ -153,7 +153,7 @@ async def run_attempts(plan: AttemptPlan) -> AsyncGenerator[StreamOutput]:
                 yield output
             shell.trace("provider.response.completed", attempt.completed_fields())
             return
-        except asyncio.CancelledError, GeneratorExit:
+        except (asyncio.CancelledError, GeneratorExit):
             raise
         except Exception as raw_error:
             if not attempt.resolvable(raw_error):

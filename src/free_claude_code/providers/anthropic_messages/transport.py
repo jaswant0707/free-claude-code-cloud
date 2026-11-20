@@ -444,7 +444,7 @@ class AnthropicMessagesTransport:
         try:
             async for event in run:
                 yield event
-        except asyncio.CancelledError, GeneratorExit:
+        except (asyncio.CancelledError, GeneratorExit):
             raise
         except Exception as error:
             execution.fail(error)
