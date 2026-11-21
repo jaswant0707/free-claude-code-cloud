@@ -50,23 +50,35 @@ try:
 
     @app.middleware("http")
     async def _vercel_path_middleware(request: Request, call_next):
-        # Normalize rewritten paths from Vercel headers if needed
-        path = request.scope.get("path", "")
-        if path in ("/api/index.py", "/api/index", "/api", "/api/"):
-            matched = (
-                request.headers.get("x-matched-path")
-                or request.headers.get("x-forwarded-uri")
-                or request.headers.get("x-invoke-path")
-            )
-            if matched:
-                clean_path = matched.split("?", 1)[0]
-                request.scope["path"] = clean_path
-                request.scope["raw_path"] = clean_path.encode("utf-8")
-            else:
-                request.scope["path"] = "/"
-                request.scope["raw_path"] = b"/"
+        # Normalize rewritten paths from Vercel rewrites or headers
+        target_path = request.query_params.get("__url_path")
+        if not target_path:
+            for header in ("x-matched-path", "x-forwarded-uri", "x-invoke-path"):
+                val = request.headers.get(header)
+                if val and val not in ("/api/index.py", "/api/index", "/api", "/api/"):
+                    target_path = val
+                    break
+
+        if target_path:
+            clean_path = "/" + target_path.lstrip("/").split("?", 1)[0]
+            request.scope["path"] = clean_path
+            request.scope["raw_path"] = clean_path.encode("utf-8")
+
+            raw_qs = request.scope.get("query_string", b"").decode("utf-8", errors="replace")
+            if "__url_path=" in raw_qs:
+                filtered_qs = "&".join(
+                    p for p in raw_qs.split("&") if not p.startswith("__url_path=") and p
+                )
+                request.scope["query_string"] = filtered_qs.encode("utf-8")
+
             if hasattr(request, "_url"):
                 delattr(request, "_url")
+        elif request.scope.get("path") in ("/api/index.py", "/api/index", "/api", "/api/"):
+            request.scope["path"] = "/"
+            request.scope["raw_path"] = b"/"
+            if hasattr(request, "_url"):
+                delattr(request, "_url")
+
         return await call_next(request)
 
 except Exception:
