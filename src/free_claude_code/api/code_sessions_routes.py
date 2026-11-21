@@ -81,18 +81,8 @@ def _code(services: ApiServices) -> CodeApplicationPort:
 @router.get("/admin/code", include_in_schema=False)
 @router.get("/admin/code/{session_id}", include_in_schema=False)
 def code_page(request: Request, session_id: str | None = None):
-    response = admin_page_response()
-    query_token = request.query_params.get("token", "").strip()
-    if query_token and is_authorized_admin(request):
-        response.set_cookie(
-            key="fcc_admin_token",
-            value=query_token,
-            httponly=True,
-            samesite="lax",
-            secure=request.url.scheme == "https",
-            path="/",
-        )
-    return response
+    require_loopback_admin(request)
+    return admin_page_response()
 
 
 @router.get("/admin/api/code/bootstrap")

@@ -505,6 +505,8 @@ def responses_to_gemini(
         "include",
         "text",
         "metadata",
+        "prompt_cache_key",
+        "client_metadata",
     }
     if unsupported := set(body) - supported:
         raise GeminiConversionError(

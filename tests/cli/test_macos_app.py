@@ -44,7 +44,21 @@ def test_runtime_uses_venv_executable_and_interpreter_architecture(runtime):
     assert architecture == "x86_64"
 
 
-def test_runtime_keeps_symlinked_venv_identity(runtime):
+def _require_symlink(tmp_path: Path) -> None:
+    test_link = tmp_path / "_symlink_probe_link"
+    test_target = tmp_path / "_symlink_probe_target"
+    test_target.write_text("probe")
+    try:
+        test_link.symlink_to(test_target)
+        test_link.unlink()
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink creation requires Developer Mode or privilege")
+        raise
+
+
+def test_runtime_keeps_symlinked_venv_identity(runtime, tmp_path):
+    _require_symlink(tmp_path)
     executable, library, _variables = runtime
     base_executable = library.parent / "python"
     executable.rename(base_executable)
@@ -104,7 +118,8 @@ def installer(tmp_path, monkeypatch, runtime):
     return home, resources, calls
 
 
-def test_complete_bundle_is_signed_before_publication(installer, runtime):
+def test_complete_bundle_is_signed_before_publication(installer, runtime, tmp_path):
+    _require_symlink(tmp_path)
     home, _resources, calls = installer
     app = macos_app.install()
     assert app == home / "Applications/Free Claude Code.app"
@@ -134,8 +149,9 @@ def owned_app(home):
 
 
 def test_upgrade_replaces_legacy_owned_bundle_and_updates_runtime(
-    installer, runtime, monkeypatch
+    installer, runtime, monkeypatch, tmp_path
 ):
+    _require_symlink(tmp_path)
     home, _resources, _calls = installer
     app = owned_app(home)
     macos_app.install()
@@ -204,7 +220,8 @@ def test_failed_restore_keeps_backup_for_recovery(installer, monkeypatch):
     assert backups[0].read_text() == "preserve on failure"
 
 
-def test_app_symlink_is_not_treated_as_owned(installer):
+def test_app_symlink_is_not_treated_as_owned(installer, tmp_path):
+    _require_symlink(tmp_path)
     home, _resources, _calls = installer
     app = owned_app(home)
     real = app.with_name("Other.app")

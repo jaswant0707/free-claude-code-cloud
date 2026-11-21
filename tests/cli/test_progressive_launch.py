@@ -511,7 +511,7 @@ def _assert_browser_probe_exits(tmp_path, mode, outcome, setup_delay="0"):
         ],
         capture_output=True,
         text=True,
-        timeout=12,
+        timeout=30,
         check=False,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr

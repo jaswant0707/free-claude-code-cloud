@@ -24,6 +24,8 @@ class OpenAIResponsesRequest(BaseModel):
     reasoning: JsonObject | None = None
     previous_response_id: str | None = None
     store: bool | None = None
+    prompt_cache_key: str | None = None
+    client_metadata: JsonObject | None = None
 
     @field_validator("max_output_tokens", mode="before")
     @classmethod

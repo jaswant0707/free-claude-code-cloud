@@ -589,6 +589,43 @@ def test_create_response_preserves_muse_code_request_shape() -> None:
     assert provider.stream_kwargs[0]["reasoning"] == expected_policy
 
 
+@pytest.mark.parametrize(
+    ("client_metadata", "prompt_cache_key"),
+    [
+        ({"client": "codex", "version": "0.1.0"}, None),
+        (None, "session_cache_abc123"),
+        ({"client": "codex", "session_id": "sess_1"}, "session_cache_abc123"),
+    ],
+)
+def test_create_response_accepts_codex_client_metadata_and_prompt_cache_key(
+    client_metadata, prompt_cache_key
+) -> None:
+    request: dict[str, object] = {
+        "model": _PUBLIC_MODEL,
+        "input": "Execute turn",
+        "stream": True,
+    }
+    if client_metadata is not None:
+        request["client_metadata"] = client_metadata
+    if prompt_cache_key is not None:
+        request["prompt_cache_key"] = prompt_cache_key
+
+    provider = FakeProvider(_responses_text_stream("hello"))
+    app = create_test_app()
+    with (
+        patch("free_claude_code.api.routes.resolve_provider", return_value=provider),
+        TestClient(app) as client,
+    ):
+        response = client.post("/v1/responses", json=request)
+
+    assert response.status_code == 200
+    routed = provider.requests[0]
+    if client_metadata is not None:
+        assert routed.client_metadata == client_metadata
+    if prompt_cache_key is not None:
+        assert routed.prompt_cache_key == prompt_cache_key
+
+
 def test_create_response_preserves_custom_tool_request() -> None:
     tool: JsonObject = {
         "type": "custom",
@@ -747,6 +784,43 @@ def test_create_response_preserves_and_resolves_reasoning_effort(
     assert provider.requests[0].reasoning == reasoning
     assert provider.stream_kwargs[0]["reasoning"] == expected_policy
     assert provider.stream_kwargs[0]["reasoning"] == expected_policy
+
+
+@pytest.mark.parametrize(
+    ("client_metadata", "prompt_cache_key"),
+    [
+        ({"client": "codex", "version": "0.1.0"}, None),
+        (None, "session_cache_abc123"),
+        ({"client": "codex", "session_id": "sess_1"}, "session_cache_abc123"),
+    ],
+)
+def test_create_response_accepts_codex_client_metadata_and_prompt_cache_key(
+    client_metadata, prompt_cache_key
+) -> None:
+    request: dict[str, object] = {
+        "model": _PUBLIC_MODEL,
+        "input": "Execute turn",
+        "stream": True,
+    }
+    if client_metadata is not None:
+        request["client_metadata"] = client_metadata
+    if prompt_cache_key is not None:
+        request["prompt_cache_key"] = prompt_cache_key
+
+    provider = FakeProvider(_responses_text_stream("hello"))
+    app = create_test_app()
+    with (
+        patch("free_claude_code.api.routes.resolve_provider", return_value=provider),
+        TestClient(app) as client,
+    ):
+        response = client.post("/v1/responses", json=request)
+
+    assert response.status_code == 200
+    routed = provider.requests[0]
+    if client_metadata is not None:
+        assert routed.client_metadata == client_metadata
+    if prompt_cache_key is not None:
+        assert routed.prompt_cache_key == prompt_cache_key
 
 
 def test_create_response_relays_encrypted_reasoning() -> None:

@@ -169,20 +169,36 @@ def _proxy_token_matches(
             return False
         token = parts[1].strip()
 
-    valid_tokens = [configured_token] if (configured_token and configured_token != "freecc") else []
+    if not token:
+        return False
+
+    from .admin_security import is_cloud_environment
+
+    is_cloud = is_cloud_environment()
+    valid_tokens: list[str] = []
+
+    # 1. Configured token from Settings
+    # In cloud environments, the publicly guessable default 'freecc' is strictly disallowed.
+    if configured_token:
+        if not is_cloud or configured_token != "freecc":
+            valid_tokens.append(configured_token)
+
+    # 2. External API tokens from environment (Admin tokens are strictly excluded)
     for env_var in (
         "MASTER_API_TOKEN",
         "PROXY_AUTH_TOKEN",
-        "ADMIN_AUTH_TOKEN",
         "ANTHROPIC_AUTH_TOKEN",
     ):
         env_val = os.getenv(env_var, "").strip()
         if env_val and env_val not in valid_tokens:
-            valid_tokens.append(env_val)
-    if not valid_tokens and configured_token:
+            if not is_cloud or env_val != "freecc":
+                valid_tokens.append(env_val)
+
+    # 3. In local development mode, if no custom token was configured, allow configured default
+    if not valid_tokens and not is_cloud and configured_token:
         valid_tokens.append(configured_token)
 
-    return bool(token) and any(
+    return any(
         secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
         for expected in valid_tokens
     )

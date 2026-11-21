@@ -50,6 +50,8 @@ _REQUEST_FIELDS = {
     "text",
     "include",
     "truncation",
+    "prompt_cache_key",
+    "client_metadata",
 }
 
 

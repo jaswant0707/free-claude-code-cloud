@@ -114,18 +114,7 @@ def admin_page_response() -> HTMLResponse:
 @router.get("/admin/integrations", include_in_schema=False)
 def admin_page(request: Request):
     require_loopback_admin(request)
-    response = admin_page_response()
-    query_token = request.query_params.get("token", "").strip()
-    if query_token and is_authorized_admin(request):
-        response.set_cookie(
-            key="fcc_admin_token",
-            value=query_token,
-            httponly=True,
-            samesite="lax",
-            secure=request.url.scheme == "https",
-            path="/",
-        )
-    return response
+    return admin_page_response()
 
 
 @router.get("/admin/assets/{version}/{filename:path}", include_in_schema=False)

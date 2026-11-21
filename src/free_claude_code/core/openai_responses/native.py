@@ -50,6 +50,7 @@ def build_native_responses_request(
     body["stream"] = True
     body["store"] = False
     body.pop("previous_response_id", None)
+    body.pop("client_metadata", None)
     if reasoning != responses_reasoning_policy(request.reasoning):
         raw_reasoning = body.get("reasoning")
         reasoning_config = (

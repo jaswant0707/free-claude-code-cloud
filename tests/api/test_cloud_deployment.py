@@ -46,14 +46,18 @@ def test_cloud_admin_invalid_token_rejected(cloud_app):
     assert response.status_code == 401
 
 
-def test_cloud_admin_query_token_accepted_and_sets_cookie(cloud_app):
-    """Verify remote request with valid ?token= returns 200 and sets session cookie."""
+def test_cloud_admin_query_token_rejected(cloud_app):
+    """Verify remote requests with query-string ?token= are rejected with 401 for security."""
     client = TestClient(cloud_app, base_url="https://cloud-fcc.example.com")
     response = client.get("/admin?token=admin_test_token")
+    assert response.status_code == 401
+
+
+def test_cloud_admin_header_authentication(cloud_app):
+    """Verify x-admin-token header allows access to admin endpoints."""
+    client = TestClient(cloud_app, base_url="https://cloud-fcc.example.com")
+    response = client.get("/admin", headers={"x-admin-token": "admin_test_token"})
     assert response.status_code == 200
-    set_cookie = response.headers.get("set-cookie", "")
-    assert "fcc_admin_token=" in set_cookie
-    assert "HttpOnly" in set_cookie
 
 
 def test_cloud_admin_cookie_authentication(cloud_app):

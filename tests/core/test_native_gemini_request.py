@@ -174,3 +174,19 @@ def test_messages_noop_context_management_keeps_claude_code_compatible():
     result = messages_to_gemini(request)
     assert result["contents"] == [{"role": "user", "parts": [{"text": "hello"}]}]
     assert "context_management" not in result
+
+
+def test_responses_to_gemini_permits_client_metadata_and_prompt_cache_key():
+    from free_claude_code.core.gemini.native_request import responses_to_gemini
+    from free_claude_code.core.openai_responses.models import OpenAIResponsesRequest
+
+    request = OpenAIResponsesRequest(
+        model="models/gemini-2.5-flash",
+        input="Hello Gemini",
+        client_metadata={"client": "codex", "version": "0.1.0"},
+        prompt_cache_key="gemini_cache_123",
+    )
+    result = responses_to_gemini(request)
+    assert result["contents"] == [{"role": "user", "parts": [{"text": "Hello Gemini"}]}]
+    assert "client_metadata" not in result
+    assert "prompt_cache_key" not in result

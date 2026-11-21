@@ -51,6 +51,30 @@ def test_native_request_preserves_extensions_and_forces_stateless_streaming() ->
     assert request.previous_response_id == "resp_previous"
 
 
+def test_native_request_handles_client_metadata_and_prompt_cache_key() -> None:
+    request = OpenAIResponsesRequest.model_validate(
+        {
+            "model": "gateway-model",
+            "input": [{"role": "user", "content": "hello"}],
+            "client_metadata": {"client": "codex", "version": "0.1.0"},
+            "prompt_cache_key": "cache_session_123",
+        }
+    )
+
+    body = build_native_responses_request(
+        request,
+        model="upstream-model",
+        reasoning=ReasoningPolicy.provider_default(),
+    )
+
+    # prompt_cache_key is preserved for native responses API, but client_metadata is stripped
+    assert body["prompt_cache_key"] == "cache_session_123"
+    assert "client_metadata" not in body
+    assert body["model"] == "upstream-model"
+    assert body["stream"] is True
+    assert body["store"] is False
+
+
 def test_native_request_preserves_complete_multimodal_input_tree() -> None:
     input_tree = [
         {

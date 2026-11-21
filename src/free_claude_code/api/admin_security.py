@@ -58,31 +58,19 @@ def _authority_is_local(authority: str | None) -> bool:
 
 
 def _get_configured_admin_tokens() -> list[str]:
-    """Retrieve all valid admin authentication tokens from environment or settings."""
+    """Retrieve all valid dedicated admin authentication tokens from environment."""
     tokens = []
     for var in (
         "ADMIN_AUTH_TOKEN",
         "FCC_ADMIN_TOKEN",
-        "MASTER_API_TOKEN",
-        "PROXY_AUTH_TOKEN",
-        "ANTHROPIC_AUTH_TOKEN",
     ):
         val = os.getenv(var, "").strip()
         if val and val not in tokens:
             tokens.append(val)
-    if not tokens:
-        try:
-            from free_claude_code.config.loader import get_settings
-
-            token = get_settings().proxy_auth_token
-            if token and token not in tokens:
-                tokens.append(token)
-        except Exception:
-            pass
     return tokens
 
 
-def _is_cloud_environment() -> bool:
+def is_cloud_environment() -> bool:
     """Check if the server is running in a cloud or remote deployment."""
     return bool(
         os.getenv("FCC_CLOUD_DEPLOYMENT", "").lower() in ("1", "true", "yes")
@@ -91,9 +79,11 @@ def _is_cloud_environment() -> bool:
         or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
         or os.getenv("ADMIN_AUTH_TOKEN")
         or os.getenv("FCC_ADMIN_TOKEN")
-        or os.getenv("MASTER_API_TOKEN")
         or os.getenv("OWNER_EMAIL")
     )
+
+
+_is_cloud_environment = is_cloud_environment
 
 
 def is_authorized_admin(request: Request) -> bool:
@@ -126,20 +116,12 @@ def is_authorized_admin(request: Request) -> bool:
             if secrets.compare_digest(cookie_token.encode("utf-8"), expected.encode("utf-8")):
                 return True
 
-    # 3. Check Query parameter: ?token=
-    query_token = request.query_params.get("token", "").strip()
-    if query_token:
+    # 3. Check x-admin-token header
+    header_token = request.headers.get("x-admin-token", "").strip()
+    if header_token:
         for expected in tokens:
-            if secrets.compare_digest(query_token.encode("utf-8"), expected.encode("utf-8")):
+            if secrets.compare_digest(header_token.encode("utf-8"), expected.encode("utf-8")):
                 return True
-
-    # 4. Check x-api-key or x-admin-token headers
-    for header_name in ("x-admin-token", "x-api-key"):
-        header_token = request.headers.get(header_name, "").strip()
-        if header_token:
-            for expected in tokens:
-                if secrets.compare_digest(header_token.encode("utf-8"), expected.encode("utf-8")):
-                    return True
 
     return False
 
@@ -148,15 +130,16 @@ def require_loopback_admin(request: Request) -> None:
     """Allow Admin access from local loopback or authenticated remote cloud users."""
     client_host = request.client.host if request.client else None
 
-    # Check if this is a genuine local loopback connection
-    if (
-        _is_loopback_host(client_host)
-        and _authority_is_local(request.headers.get("host"))
-        and _origin_is_local(request.headers.get("origin"))
-    ):
-        return
+    # Check if this is a genuine local loopback connection in local mode
+    if not _is_cloud_environment():
+        if (
+            _is_loopback_host(client_host)
+            and _authority_is_local(request.headers.get("host"))
+            and _origin_is_local(request.headers.get("origin"))
+        ):
+            return
 
-    # If not local loopback, verify cloud / remote authentication
+    # Verify admin authentication (required in cloud environments or remote callers)
     if is_authorized_admin(request):
         return
 
@@ -174,7 +157,7 @@ def require_loopback_admin(request: Request) -> None:
             status_code=401,
             detail=(
                 "Unauthorized: Valid admin authentication token required. "
-                "Provide via Authorization Bearer header, fcc_admin_token cookie, or ?token= query parameter."
+                "Provide via Authorization Bearer header, x-admin-token header, or fcc_admin_token cookie."
             ),
         )
 

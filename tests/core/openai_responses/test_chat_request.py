@@ -694,3 +694,18 @@ def test_build_responses_chat_request_rejects_colliding_tool_wire_names() -> Non
             ),
             reasoning_replay=ReasoningReplayMode.REASONING_CONTENT,
         )
+
+
+def test_chat_request_ignores_client_metadata_and_prompt_cache_key() -> None:
+    translated = build_responses_chat_request(
+        _request(
+            client_metadata={"client": "codex", "version": "0.1.0"},
+            prompt_cache_key="cache_123",
+            input="Hello world",
+        ),
+        reasoning_replay=ReasoningReplayMode.REASONING_CONTENT,
+    )
+    assert translated.body["model"] == "provider/model"
+    assert "client_metadata" not in translated.body
+    assert "prompt_cache_key" not in translated.body
+    assert len(translated.body["messages"]) >= 1

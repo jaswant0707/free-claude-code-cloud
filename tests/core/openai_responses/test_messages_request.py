@@ -486,3 +486,32 @@ def test_malformed_discriminators_produce_conversion_errors(
 ) -> None:
     with pytest.raises(ResponsesConversionError):
         _build(payload)
+
+
+@pytest.mark.parametrize(
+    ("client_metadata", "prompt_cache_key"),
+    [
+        ({"client": "codex", "version": "1.0"}, None),
+        (None, "session-cache-key-1"),
+        ({"client": "codex", "session_id": "sess-99"}, "session-cache-key-2"),
+    ],
+)
+def test_messages_request_permits_codex_metadata_and_cache_key(
+    client_metadata, prompt_cache_key
+) -> None:
+    payload: dict[str, object] = {
+        "model": "public-model",
+        "input": "test turn",
+        "instructions": "Be concise.",
+    }
+    if client_metadata is not None:
+        payload["client_metadata"] = client_metadata
+    if prompt_cache_key is not None:
+        payload["prompt_cache_key"] = prompt_cache_key
+
+    built = _build(payload)
+    assert isinstance(built.body, dict)
+    assert "messages" in built.body
+    # Ensure neither client_metadata nor prompt_cache_key leaks into native Messages wire request
+    assert "client_metadata" not in built.body
+    assert "prompt_cache_key" not in built.body
