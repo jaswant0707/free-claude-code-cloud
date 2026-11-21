@@ -1,0 +1,16 @@
+# Exclude uv.lock and pyproject.toml so Vercel builds using python-3.12 and requirements.txt
+uv.lock
+pyproject.toml
+
+# Exclude dev, test, and documentation assets
+.github/
+.pytest_cache/
+.venv/
+tests/
+e2e/
+smoke/
+scripts/
+assets/
+*.md
+Dockerfile
+docker-compose.yml
