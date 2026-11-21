@@ -93,6 +93,21 @@ async def test_references_are_bound_to_owner_and_server_lifetime(service):
 
 
 @pytest.mark.asyncio
+async def test_cloud_deployment_shares_deterministic_revision_key(service, monkeypatch):
+    monkeypatch.setenv("FCC_CLOUD_DEPLOYMENT", "1")
+    monkeypatch.setenv("OWNER_PASSWORD", "secret-password")
+    cloud_service_1 = ConfigurationService(service._store)
+    cloud_service_2 = ConfigurationService(service._store)
+    assert cloud_service_1._revision_key == cloud_service_2._revision_key
+
+    edit = await key_edit(cloud_service_1, "ANTHROPIC_API_KEY", [{"value": "sk-ant-testkey"}])
+    prepared = await cloud_service_2.prepare(
+        {"ANTHROPIC_API_KEY": edit}, service._store.read().settings
+    )
+    assert prepared.valid
+
+
+@pytest.mark.asyncio
 async def test_duplicate_retained_and_new_keys_highlights_both_rows(service):
     await save_keys(service, ["private-first"])
     edit = await key_edit(

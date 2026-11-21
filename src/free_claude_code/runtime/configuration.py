@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
 from collections.abc import Mapping
 from secrets import token_bytes
 
@@ -20,11 +22,42 @@ from free_claude_code.core.json_types import JsonObject
 
 
 class ConfigurationService:
-    def __init__(self, store: ManagedConfigStore) -> None:
+    def __init__(
+        self,
+        store: ManagedConfigStore,
+        revision_key: bytes | None = None,
+    ) -> None:
         self._store = store
-        self._revision_key = token_bytes(32)
+        self._revision_key = (
+            revision_key if revision_key is not None else self._resolve_revision_key()
+        )
         # Storage is serialized; its waiters must not exhaust FastAPI's worker pool.
         self._worker_limiter = CapacityLimiter(1)
+
+    @staticmethod
+    def _resolve_revision_key() -> bytes:
+        key_env = os.getenv("FCC_REVISION_KEY", "").strip()
+        if key_env:
+            return hashlib.sha256(key_env.encode("utf-8")).digest()
+
+        is_cloud = bool(
+            os.getenv("FCC_CLOUD_DEPLOYMENT")
+            or os.getenv("VERCEL")
+            or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+        )
+        owner_pw = os.getenv("OWNER_PASSWORD", "").strip()
+        admin_token = os.getenv("ADMIN_AUTH_TOKEN", "").strip()
+        master_token = os.getenv("MASTER_API_TOKEN", "").strip()
+        anthropic_token = os.getenv("ANTHROPIC_AUTH_TOKEN", "").strip()
+
+        if is_cloud or owner_pw or admin_token or master_token or anthropic_token:
+            seed = (
+                f"fcc-revision-key-v1:{owner_pw}:{admin_token}:{master_token}:"
+                f"{anthropic_token}:{os.getenv('VERCEL_PROJECT_ID', '')}"
+            )
+            return hashlib.sha256(seed.encode("utf-8")).digest()
+
+        return token_bytes(32)
 
     async def initialize(self) -> None:
         await to_thread.run_sync(self._store.initialize, limiter=self._worker_limiter)
