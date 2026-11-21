@@ -4,6 +4,8 @@ import os
 import sys
 import traceback
 from pathlib import Path
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 
 # Ensure project src and root directories are available in module search path
 _CURRENT_DIR = Path(__file__).resolve().parent
@@ -32,98 +34,45 @@ except Exception:
 if "PROXY_AUTH_ENABLED" not in os.environ:
     os.environ["PROXY_AUTH_ENABLED"] = "true"
 
-_init_error = None
-_real_app = None
-
 try:
     from free_claude_code.config.loader import clear_settings_cache, get_settings
     from free_claude_code.runtime.bootstrap import build_asgi_app
 
     clear_settings_cache()
     settings = get_settings()
-    _real_app = build_asgi_app(settings)
-except Exception:
-    _init_error = traceback.format_exc()
-    print(f"FCC Startup Initialization Error:\n{_init_error}", file=sys.stderr, flush=True)
+    _runtime_asgi = build_asgi_app(settings)
+    app: FastAPI = _runtime_asgi.app
+    app.state.runtime = _runtime_asgi.runtime
 
-
-def _extract_header(headers: list[tuple[bytes, bytes]], key: bytes) -> str | None:
-    for k, v in headers:
-        if k.lower() == key:
-            try:
-                return v.decode("utf-8")
-            except Exception:
-                return None
-    return None
-
-
-async def app(scope, receive, send):
-    """ASGI entrypoint with diagnostic error capture and path normalization."""
-    if _init_error is not None:
-        if scope["type"] == "http":
-            body = (
-                f"<!doctype html><html><head><title>FCC Cloud Startup Error</title></head><body>"
-                f"<h2>Free Claude Code Cloud — Initialization Error</h2>"
-                f"<pre style='background:#f4f4f4;padding:15px;border-radius:5px;border:1px solid #ccc;overflow-x:auto;'>{_init_error}</pre>"
-                f"</body></html>"
-            ).encode("utf-8")
-            await send({
-                "type": "http.response.start",
-                "status": 500,
-                "headers": [
-                    (b"content-type", b"text/html; charset=utf-8"),
-                    (b"content-length", str(len(body)).encode("ascii")),
-                ],
-            })
-            await send({
-                "type": "http.response.body",
-                "body": body,
-            })
-        elif scope["type"] == "lifespan":
-            msg = await receive()
-            if msg["type"] == "lifespan.startup":
-                await send({"type": "lifespan.startup.failed", "message": _init_error})
-        return
-
-    # Normalize rewritten path if rewritten to /api/index.py or /api/index
-    if scope.get("type") == "http":
-        headers = scope.get("headers", [])
+    @app.middleware("http")
+    async def _vercel_path_middleware(request: Request, call_next):
+        # Normalize rewritten paths from Vercel headers if needed
         matched = (
-            _extract_header(headers, b"x-matched-path")
-            or _extract_header(headers, b"x-forwarded-uri")
-            or _extract_header(headers, b"x-invoke-path")
+            request.headers.get("x-matched-path")
+            or request.headers.get("x-forwarded-uri")
+            or request.headers.get("x-invoke-path")
         )
-        if matched:
+        if matched and request.scope.get("path") in ("/api/index.py", "/api/index", "/api"):
             clean_path = matched.split("?", 1)[0]
-            scope["path"] = clean_path
-            scope["raw_path"] = clean_path.encode("utf-8")
-        elif scope.get("path") in ("/api/index.py", "/api/index", "/api"):
-            scope["path"] = "/"
-            scope["raw_path"] = b"/"
+            request.scope["path"] = clean_path
+            request.scope["raw_path"] = clean_path.encode("utf-8")
+        elif request.scope.get("path") in ("/api/index.py", "/api/index", "/api"):
+            request.scope["path"] = "/"
+            request.scope["raw_path"] = b"/"
+        return await call_next(request)
 
-    try:
-        await _real_app(scope, receive, send)
-    except Exception:
-        err_msg = traceback.format_exc()
-        print(f"FCC Request Handling Error on {scope.get('path')}:\n{err_msg}", file=sys.stderr, flush=True)
-        if scope["type"] == "http":
-            body = (
-                f"<!doctype html><html><head><title>FCC Cloud Runtime Error</title></head><body>"
-                f"<h2>Free Claude Code Cloud — Runtime Error</h2>"
-                f"<pre style='background:#f4f4f4;padding:15px;border-radius:5px;border:1px solid #ccc;overflow-x:auto;'>{err_msg}</pre>"
-                f"</body></html>"
-            ).encode("utf-8")
-            await send({
-                "type": "http.response.start",
-                "status": 500,
-                "headers": [
-                    (b"content-type", b"text/html; charset=utf-8"),
-                    (b"content-length", str(len(body)).encode("ascii")),
-                ],
-            })
-            await send({
-                "type": "http.response.body",
-                "body": body,
-            })
-        else:
-            raise
+except Exception:
+    _err = traceback.format_exc()
+    print(f"FCC Cloud Cold-Start Error:\n{_err}", file=sys.stderr, flush=True)
+
+    app = FastAPI(title="Free Claude Code Cloud")
+
+    @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+    async def _catch_all(request: Request, path: str = ""):
+        return HTMLResponse(
+            f"<!doctype html><html><head><title>FCC Cloud Startup Error</title></head><body>"
+            f"<h2>Free Claude Code Cloud — Initialization Error</h2>"
+            f"<pre style='background:#f4f4f4;padding:15px;border-radius:5px;border:1px solid #ccc;overflow-x:auto;'>{_err}</pre>"
+            f"</body></html>",
+            status_code=500,
+        )
