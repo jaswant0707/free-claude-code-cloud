@@ -7,6 +7,7 @@ Loguru's JSON stores exception metadata in ``record.exception`` and context in
 """
 
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -65,19 +66,46 @@ def _set_third_party_levels(verbose: bool) -> None:
         logging.getLogger(name).setLevel(level)
 
 
-def _add_file_sink(log_file: str | Path, level: str) -> int:
-    log_path = Path(log_file)
-    return logger.add(
-        log_path,
-        level=level,
-        serialize=True,
-        diagnose=False,
-        encoding="utf-8",
-        mode="a",
-        rotation="50 MB",
-        retention=5,
-        enqueue=True,
+def _is_cloud() -> bool:
+    return bool(
+        os.getenv("VERCEL")
+        or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+        or os.getenv("FCC_CLOUD_DEPLOYMENT")
     )
+
+
+def _add_file_sink(log_file: str | Path, level: str) -> int:
+    if _is_cloud():
+        import sys
+        return logger.add(
+            sys.stderr,
+            level=level,
+            serialize=True,
+            diagnose=False,
+            enqueue=False,
+        )
+    log_path = Path(log_file)
+    try:
+        return logger.add(
+            log_path,
+            level=level,
+            serialize=True,
+            diagnose=False,
+            encoding="utf-8",
+            mode="a",
+            rotation="50 MB",
+            retention=5,
+            enqueue=True,
+        )
+    except (OSError, PermissionError):
+        import sys
+        return logger.add(
+            sys.stderr,
+            level=level,
+            serialize=True,
+            diagnose=False,
+            enqueue=False,
+        )
 
 
 def configure_logging(

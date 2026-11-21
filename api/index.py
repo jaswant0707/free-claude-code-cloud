@@ -44,10 +44,21 @@ try:
     _real_app = build_asgi_app(settings)
 except Exception:
     _init_error = traceback.format_exc()
+    print(f"FCC Startup Initialization Error:\n{_init_error}", file=sys.stderr, flush=True)
+
+
+def _extract_header(headers: list[tuple[bytes, bytes]], key: bytes) -> str | None:
+    for k, v in headers:
+        if k.lower() == key:
+            try:
+                return v.decode("utf-8")
+            except Exception:
+                return None
+    return None
 
 
 async def app(scope, receive, send):
-    """ASGI entrypoint with diagnostic error capture."""
+    """ASGI entrypoint with diagnostic error capture and path normalization."""
     if _init_error is not None:
         if scope["type"] == "http":
             body = (
@@ -74,10 +85,27 @@ async def app(scope, receive, send):
                 await send({"type": "lifespan.startup.failed", "message": _init_error})
         return
 
+    # Normalize rewritten path if rewritten to /api/index.py or /api/index
+    if scope.get("type") == "http":
+        headers = scope.get("headers", [])
+        matched = (
+            _extract_header(headers, b"x-matched-path")
+            or _extract_header(headers, b"x-forwarded-uri")
+            or _extract_header(headers, b"x-invoke-path")
+        )
+        if matched:
+            clean_path = matched.split("?", 1)[0]
+            scope["path"] = clean_path
+            scope["raw_path"] = clean_path.encode("utf-8")
+        elif scope.get("path") in ("/api/index.py", "/api/index", "/api"):
+            scope["path"] = "/"
+            scope["raw_path"] = b"/"
+
     try:
         await _real_app(scope, receive, send)
     except Exception:
         err_msg = traceback.format_exc()
+        print(f"FCC Request Handling Error on {scope.get('path')}:\n{err_msg}", file=sys.stderr, flush=True)
         if scope["type"] == "http":
             body = (
                 f"<!doctype html><html><head><title>FCC Cloud Runtime Error</title></head><body>"
