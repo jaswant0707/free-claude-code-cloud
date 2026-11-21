@@ -27,6 +27,7 @@ from free_claude_code.providers.openai_codex.auth import OpenAIAuthManager
 from free_claude_code.providers.runtime.runtime import ProviderRuntime, create_provider
 
 if TYPE_CHECKING:
+    from fastapi import FastAPI
     from free_claude_code.providers.admission import ProviderAdmissionController
     from free_claude_code.providers.runtime.factory import ProviderFactory
 
@@ -44,6 +45,8 @@ from .web_tools.client import HTTPWebToolsClient
 def build_asgi_app(
     settings: Settings,
     restart_callback: RestartCallback | None = None,
+    *,
+    app: FastAPI | None = None,
 ) -> RuntimeASGIApp:
     """Construct the complete server application and its resource owner."""
     log_path = Path(os.getenv("LOG_FILE", server_log_path()))
@@ -100,7 +103,7 @@ def build_asgi_app(
         web_tools=HTTPWebToolsClient(),
         code=code_service,
     )
-    return RuntimeASGIApp(create_app(services), runtime)
+    return RuntimeASGIApp(create_app(services, app=app), runtime)
 
 
 def _load_openai_provider(*, auth: OpenAIAuthManager) -> ProviderFactory:

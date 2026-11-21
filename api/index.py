@@ -1,5 +1,7 @@
 """Vercel Serverless Function entry point for Free Claude Code Cloud."""
 
+from __future__ import annotations
+
 import os
 import sys
 import traceback
@@ -34,38 +36,42 @@ except Exception:
 if "PROXY_AUTH_ENABLED" not in os.environ:
     os.environ["PROXY_AUTH_ENABLED"] = "true"
 
+# Top-level FastAPI instance required by Vercel's build parser
+app = FastAPI(title="Free Claude Code Cloud")
+
 try:
     from free_claude_code.config.loader import clear_settings_cache, get_settings
     from free_claude_code.runtime.bootstrap import build_asgi_app
 
     clear_settings_cache()
     settings = get_settings()
-    _runtime_asgi = build_asgi_app(settings)
-    app: FastAPI = _runtime_asgi.app
+    _runtime_asgi = build_asgi_app(settings, app=app)
     app.state.runtime = _runtime_asgi.runtime
 
     @app.middleware("http")
     async def _vercel_path_middleware(request: Request, call_next):
         # Normalize rewritten paths from Vercel headers if needed
-        matched = (
-            request.headers.get("x-matched-path")
-            or request.headers.get("x-forwarded-uri")
-            or request.headers.get("x-invoke-path")
-        )
-        if matched and request.scope.get("path") in ("/api/index.py", "/api/index", "/api"):
-            clean_path = matched.split("?", 1)[0]
-            request.scope["path"] = clean_path
-            request.scope["raw_path"] = clean_path.encode("utf-8")
-        elif request.scope.get("path") in ("/api/index.py", "/api/index", "/api"):
-            request.scope["path"] = "/"
-            request.scope["raw_path"] = b"/"
+        path = request.scope.get("path", "")
+        if path in ("/api/index.py", "/api/index", "/api", "/api/"):
+            matched = (
+                request.headers.get("x-matched-path")
+                or request.headers.get("x-forwarded-uri")
+                or request.headers.get("x-invoke-path")
+            )
+            if matched:
+                clean_path = matched.split("?", 1)[0]
+                request.scope["path"] = clean_path
+                request.scope["raw_path"] = clean_path.encode("utf-8")
+            else:
+                request.scope["path"] = "/"
+                request.scope["raw_path"] = b"/"
+            if hasattr(request, "_url"):
+                delattr(request, "_url")
         return await call_next(request)
 
 except Exception:
     _err = traceback.format_exc()
     print(f"FCC Cloud Cold-Start Error:\n{_err}", file=sys.stderr, flush=True)
-
-    app = FastAPI(title="Free Claude Code Cloud")
 
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
     async def _catch_all(request: Request, path: str = ""):
