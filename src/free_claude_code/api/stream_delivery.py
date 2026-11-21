@@ -1,5 +1,7 @@
 """Own public projection, tool release, recovery mapping and wire termination."""
 
+from __future__ import annotations
+
 import re
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator
 from copy import deepcopy

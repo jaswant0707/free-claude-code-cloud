@@ -1,5 +1,7 @@
 """Disconnect native integrations before removing FCC's installed commands."""
 
+from __future__ import annotations
+
 import os
 from collections.abc import Callable
 from dataclasses import dataclass

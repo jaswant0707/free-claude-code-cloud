@@ -1,5 +1,7 @@
 """Opaque native Messages requests and lifecycle-only SSE relay."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import Mapping
 from copy import deepcopy
