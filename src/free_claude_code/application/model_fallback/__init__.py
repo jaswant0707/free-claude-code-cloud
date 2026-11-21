@@ -1,5 +1,7 @@
 """Run ordered model candidates as one response, falling back when one fails."""
 
+from __future__ import annotations
+
 from .runner import stream_model_candidates
 from .types import CandidateStreamOpener, WireApi
 

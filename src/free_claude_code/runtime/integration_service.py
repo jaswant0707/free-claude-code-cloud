@@ -1,5 +1,7 @@
 """Own integration workflows while sharing configuration publication ordering."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field

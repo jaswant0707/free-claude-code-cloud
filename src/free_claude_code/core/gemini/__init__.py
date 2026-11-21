@@ -1,5 +1,7 @@
 """Native Gemini GenerateContent ingress and direct protocol translation."""
 
+from __future__ import annotations
+
 from .errors import GeminiConversionError, gemini_error_payload
 from .models import GeminiRequest
 

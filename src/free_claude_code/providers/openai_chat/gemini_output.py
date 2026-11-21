@@ -1,5 +1,7 @@
 """Direct Gemini presentation of the shared Chat stream assembler."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 
 from free_claude_code.core.failures import ExecutionFailure

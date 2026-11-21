@@ -1,5 +1,7 @@
 """Exceptions that carry provider recovery state between attempts."""
 
+from __future__ import annotations
+
 
 class ProviderRecoveryExhausted(RuntimeError):
     """The fixed cause and retry deadline selected when recovery stops execution."""

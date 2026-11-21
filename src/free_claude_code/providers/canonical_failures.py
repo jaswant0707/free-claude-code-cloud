@@ -1,5 +1,7 @@
 """Canonical provider failures and the wire fields that signal them."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Mapping
 
 from free_claude_code.core.failures import ExecutionFailure, FailureKind

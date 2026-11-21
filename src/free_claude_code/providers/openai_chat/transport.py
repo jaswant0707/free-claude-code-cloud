@@ -1,5 +1,7 @@
 """Shared Chat Completions transport and per-request stream execution."""
 
+from __future__ import annotations
+
 import asyncio
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping

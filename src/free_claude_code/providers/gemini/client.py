@@ -1,5 +1,7 @@
 """Google AI Studio provider using native GenerateContent and model discovery."""
 
+from __future__ import annotations
+
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
 from uuid import uuid4

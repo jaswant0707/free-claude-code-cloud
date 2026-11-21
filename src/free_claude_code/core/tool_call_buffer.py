@@ -1,5 +1,7 @@
 """Bounded source-order retention, independent of protocols and presentation."""
 
+from __future__ import annotations
+
 from collections import deque
 from collections.abc import Hashable, Iterator
 from dataclasses import dataclass

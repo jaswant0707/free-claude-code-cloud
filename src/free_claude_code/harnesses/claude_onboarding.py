@@ -1,5 +1,7 @@
 """Read or complete user-global Claude Code onboarding independently of editors."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import cast

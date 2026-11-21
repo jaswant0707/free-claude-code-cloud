@@ -1,5 +1,7 @@
 """Chat Completions JSON and SSE through the shared execution and delivery owners."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 
 from fastapi.responses import JSONResponse, Response

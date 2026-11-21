@@ -1,5 +1,7 @@
 """Gemini JSON and SSE execution through the shared provider application."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 
 from fastapi.responses import JSONResponse, Response

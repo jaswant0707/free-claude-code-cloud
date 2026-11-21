@@ -1,5 +1,7 @@
 """Gateway-safe model ID encoding shared by API and CLI adapters."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 GATEWAY_MODEL_ID_PREFIX = "anthropic"

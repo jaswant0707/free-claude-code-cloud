@@ -1,5 +1,7 @@
 """Official Copilot SDK boundary; never run SDK agent turns."""
 
+from __future__ import annotations
+
 import asyncio
 import re
 import tempfile

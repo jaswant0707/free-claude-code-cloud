@@ -1,5 +1,7 @@
 """A worker boundary that retains ownership through caller cancellation."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Callable
 

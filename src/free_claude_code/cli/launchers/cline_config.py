@@ -1,5 +1,7 @@
 """Process-local Cline CLI configuration for FCC model routing."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 

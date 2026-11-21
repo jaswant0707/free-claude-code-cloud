@@ -1,5 +1,7 @@
 """Request-local evidence of public stream delivery, independent of wire format."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar

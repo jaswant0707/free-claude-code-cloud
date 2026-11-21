@@ -1,5 +1,7 @@
 """OpenAI Responses API product flow for Codex clients."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 
 from fastapi.responses import JSONResponse

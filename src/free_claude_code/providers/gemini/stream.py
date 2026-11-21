@@ -1,5 +1,7 @@
 """Project native Google Parts directly to the requested client protocol."""
 
+from __future__ import annotations
+
 import json
 from copy import deepcopy
 from typing import Any

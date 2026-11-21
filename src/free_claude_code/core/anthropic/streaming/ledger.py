@@ -1,5 +1,7 @@
 """Anthropic stream state ledger."""
 
+from __future__ import annotations
+
 import uuid
 from collections.abc import Iterator, Mapping
 from contextlib import suppress

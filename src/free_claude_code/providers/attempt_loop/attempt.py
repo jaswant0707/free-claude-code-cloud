@@ -1,5 +1,7 @@
 """What a transport supplies for one attempt of a provider request."""
 
+from __future__ import annotations
+
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from typing import Any

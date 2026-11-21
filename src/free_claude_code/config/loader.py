@@ -1,5 +1,7 @@
 """Canonical managed-config loading, precedence, provenance, and caching."""
 
+from __future__ import annotations
+
 import os
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager

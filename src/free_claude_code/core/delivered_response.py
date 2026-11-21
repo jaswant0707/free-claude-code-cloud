@@ -1,5 +1,7 @@
 """Bounded, request-local evidence of output released to a stream consumer."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 from typing import Any, Literal
 

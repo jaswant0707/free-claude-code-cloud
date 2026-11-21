@@ -1,5 +1,7 @@
 """Turn a classified provider failure into the final client-facing failure."""
 
+from __future__ import annotations
+
 import math
 import ssl
 import time

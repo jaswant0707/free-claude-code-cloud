@@ -3,6 +3,8 @@
 Used by default CI contract tests and by opt-in live smoke scenarios.
 """
 
+from __future__ import annotations
+
 import json
 import re
 from collections.abc import Iterable

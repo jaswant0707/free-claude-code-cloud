@@ -1,5 +1,7 @@
 """Single-owner provider generations and progressively available model metadata."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field, replace

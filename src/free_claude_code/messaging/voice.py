@@ -1,5 +1,7 @@
 """Platform-neutral voice note helpers."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar

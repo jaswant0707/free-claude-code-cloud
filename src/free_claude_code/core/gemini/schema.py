@@ -1,5 +1,7 @@
 """Lossless conversion of the supported Gemini Schema into JSON Schema."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 
 from ..json_types import JsonObject, JsonValue

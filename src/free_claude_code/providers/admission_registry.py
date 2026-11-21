@@ -1,5 +1,7 @@
 """Loop-owned admission policy and controller lifetimes, independent of clients."""
 
+from __future__ import annotations
+
 from collections.abc import Iterable
 from hashlib import sha256
 from typing import TYPE_CHECKING

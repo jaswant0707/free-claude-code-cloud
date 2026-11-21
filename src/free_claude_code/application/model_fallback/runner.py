@@ -1,5 +1,7 @@
 """Execute ordered model candidates while preserving safe response continuity."""
 
+from __future__ import annotations
+
 import asyncio
 import sys
 from collections.abc import AsyncGenerator, AsyncIterator, Callable

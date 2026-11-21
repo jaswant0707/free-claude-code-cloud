@@ -6,6 +6,8 @@ Loguru's JSON stores exception metadata in ``record.exception`` and context in
 ``record.extra``. Structured traces live in ``record.extra.trace_payload``.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import threading

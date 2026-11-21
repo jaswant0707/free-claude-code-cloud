@@ -1,5 +1,7 @@
 """Uvicorn adapter imported only by the server worker."""
 
+from __future__ import annotations
+
 import logging
 import socket
 from collections.abc import Awaitable, Callable

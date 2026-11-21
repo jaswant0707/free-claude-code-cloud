@@ -1,5 +1,7 @@
 """Classify one raw upstream exception into one failure verdict."""
 
+from __future__ import annotations
+
 import ssl
 from dataclasses import replace
 

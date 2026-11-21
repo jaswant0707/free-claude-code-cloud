@@ -1,5 +1,7 @@
 """Anthropic credentials, HTTP lifetime, and atomic model capability snapshots."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import AsyncIterator, Mapping
 from types import MappingProxyType

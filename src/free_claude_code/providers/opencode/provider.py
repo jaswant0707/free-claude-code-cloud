@@ -1,5 +1,7 @@
 """OpenCode provider with catalog-driven Chat/Responses dispatch."""
 
+from __future__ import annotations
+
 import sys
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass

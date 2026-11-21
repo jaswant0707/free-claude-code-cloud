@@ -1,5 +1,7 @@
 """NVIDIA NIM provider implementation."""
 
+from __future__ import annotations
+
 import json
 import re
 from collections.abc import Mapping

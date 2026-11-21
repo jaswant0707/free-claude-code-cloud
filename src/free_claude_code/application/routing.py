@@ -1,5 +1,7 @@
 """Model routing for Claude-compatible requests."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, replace
 
 from loguru import logger

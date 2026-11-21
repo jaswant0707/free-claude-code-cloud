@@ -1,5 +1,7 @@
 """Portable recovery evidence shared by provider, routing, and public delivery."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum

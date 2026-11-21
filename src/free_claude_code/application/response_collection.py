@@ -1,5 +1,7 @@
 """Collect one replaceable private response without claiming public delivery."""
 
+from __future__ import annotations
+
 import json
 import sys
 from collections.abc import AsyncIterator, Iterable

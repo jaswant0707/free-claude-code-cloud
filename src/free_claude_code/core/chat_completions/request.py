@@ -1,5 +1,7 @@
 """Preserve native Chat requests and translate only representable fields."""
 
+from __future__ import annotations
+
 import json
 from copy import deepcopy
 from typing import Any, Self

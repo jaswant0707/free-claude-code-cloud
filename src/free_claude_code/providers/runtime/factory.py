@@ -1,5 +1,7 @@
 """Provider construction from declarative profiles and exceptional adapters."""
 
+from __future__ import annotations
+
 import importlib
 from collections.abc import Callable, Mapping
 

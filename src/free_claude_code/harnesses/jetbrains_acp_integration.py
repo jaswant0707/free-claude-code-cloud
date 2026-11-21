@@ -1,5 +1,7 @@
 """Configure a custom FCC agent using JetBrains' installed Claude ACP adapter."""
 
+from __future__ import annotations
+
 import json
 import os
 import re

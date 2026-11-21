@@ -1,5 +1,7 @@
 """Keep client calls private until the Messages stop reason permits execution."""
 
+from __future__ import annotations
+
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field

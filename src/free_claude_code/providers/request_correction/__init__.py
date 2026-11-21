@@ -5,6 +5,8 @@ a rejection teaches a longer-lived memory comes back as a ``Lesson`` for the
 attempt loop to apply.
 """
 
+from __future__ import annotations
+
 from .corrector import RequestCorrector
 from .rejection import (
     Correction,

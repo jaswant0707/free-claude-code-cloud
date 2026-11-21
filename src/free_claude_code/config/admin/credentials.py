@@ -1,5 +1,7 @@
 """Version-bound masked credential edits shared by both provider editors."""
 
+from __future__ import annotations
+
 import hashlib
 import hmac
 import json

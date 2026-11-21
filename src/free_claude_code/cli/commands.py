@@ -1,5 +1,7 @@
 """Implementations for installed Free Claude Code commands."""
 
+from __future__ import annotations
+
 import errno
 import json
 import socket

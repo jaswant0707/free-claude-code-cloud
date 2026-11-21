@@ -1,5 +1,7 @@
 """Request construction for native GenerateContent, without a Chat intermediate."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 from typing import Any
 

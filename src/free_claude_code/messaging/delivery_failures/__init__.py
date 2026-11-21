@@ -7,6 +7,8 @@ and carry out the decision; the limiter asks ``queue_pause`` how long queued
 work waits.
 """
 
+from __future__ import annotations
+
 from .decision import (
     MAX_ATTEMPTS,
     CallState,

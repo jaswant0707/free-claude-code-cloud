@@ -1,5 +1,7 @@
 """Carry completed Messages WebSearch turns into Gemini history."""
 
+from __future__ import annotations
+
 from collections.abc import Iterable, Iterator
 from typing import Any, cast
 

@@ -1,5 +1,7 @@
 """Shared security boundary for Admin product surfaces with cloud authentication support."""
 
+from __future__ import annotations
+
 import ipaddress
 import os
 import secrets

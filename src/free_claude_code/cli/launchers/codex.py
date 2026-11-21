@@ -1,5 +1,7 @@
 """Installed Codex launcher and external-client credential handoff."""
 
+from __future__ import annotations
+
 import sys
 from collections.abc import Sequence
 

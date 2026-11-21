@@ -1,5 +1,7 @@
 """DeepSeek Harness provider metadata and process-local CLI overlays."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from free_claude_code.application.model_catalog import (

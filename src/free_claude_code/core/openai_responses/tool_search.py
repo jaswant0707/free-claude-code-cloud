@@ -1,5 +1,7 @@
 """Request-scoped client discovery and provider search argument schemas."""
 
+from __future__ import annotations
+
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass

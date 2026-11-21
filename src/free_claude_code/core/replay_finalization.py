@@ -1,5 +1,7 @@
 """Seal native continuation replay against output actually released to the client."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Iterator
 from dataclasses import replace
 from typing import Any

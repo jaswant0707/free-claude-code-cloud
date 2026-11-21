@@ -1,5 +1,7 @@
 """Detect known Claude auto-mode classifier requests."""
 
+from __future__ import annotations
+
 from free_claude_code.core.anthropic import (
     MessagesRequest,
     extract_text_from_content,

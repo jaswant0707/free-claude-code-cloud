@@ -1,5 +1,7 @@
 """How long queued deliveries wait after a failure."""
 
+from __future__ import annotations
+
 
 class PlatformRateLimited(RuntimeError):
     """A platform kept rate-limiting one call; queued work waits ``retry_after``."""

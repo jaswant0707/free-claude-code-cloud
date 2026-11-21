@@ -1,5 +1,7 @@
 """Native Messages HTTP execution with one admitted recovery budget."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import uuid

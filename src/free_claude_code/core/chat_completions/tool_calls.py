@@ -1,5 +1,7 @@
 """Choice-scoped Chat call accumulation; only source termination seals calls."""
 
+from __future__ import annotations
+
 import json
 import uuid
 from collections.abc import Mapping

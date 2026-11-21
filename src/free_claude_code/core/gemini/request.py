@@ -1,5 +1,7 @@
 """Direct GenerateContent translations into the three supported upstream wires."""
 
+from __future__ import annotations
+
 import json
 from copy import deepcopy
 from dataclasses import dataclass

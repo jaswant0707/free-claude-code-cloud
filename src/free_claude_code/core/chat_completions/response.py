@@ -1,5 +1,7 @@
 """Chat SSE serialization, native relay and JSON aggregation."""
 
+from __future__ import annotations
+
 import json
 import time
 from copy import deepcopy

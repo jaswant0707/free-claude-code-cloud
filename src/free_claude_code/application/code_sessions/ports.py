@@ -1,5 +1,7 @@
 """Persistence and native execution required by Code sessions."""
 
+from __future__ import annotations
+
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol
 

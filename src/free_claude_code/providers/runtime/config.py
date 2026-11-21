@@ -1,5 +1,7 @@
 """Provider configuration construction from neutral catalog metadata."""
 
+from __future__ import annotations
+
 from free_claude_code.application.errors import ApplicationUnavailableError
 from free_claude_code.config.api_keys import selected_api_key
 from free_claude_code.config.custom_providers import CustomProviderDefinition

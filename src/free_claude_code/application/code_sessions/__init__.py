@@ -1,5 +1,7 @@
 """Persistent native coding conversations owned by FCC."""
 
+from __future__ import annotations
+
 from .models import (
     CodeConflictError,
     CodeDetail,

@@ -1,5 +1,7 @@
 """Session settings and retirement of previously saved Antigravity connections."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import Generator
 from contextlib import contextmanager

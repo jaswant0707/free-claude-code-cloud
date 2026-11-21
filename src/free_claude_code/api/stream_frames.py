@@ -1,5 +1,7 @@
 """Read and replace SSE data without losing framing or decimal precision."""
 
+from __future__ import annotations
+
 import re
 from collections.abc import Mapping
 from typing import Any

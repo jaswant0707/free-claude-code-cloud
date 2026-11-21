@@ -4,6 +4,8 @@ Every helper here is pure: it inspects one exception and never logs, sleeps, or
 reads a clock.
 """
 
+from __future__ import annotations
+
 import json
 from collections.abc import Mapping
 from contextlib import suppress

@@ -1,5 +1,7 @@
 """Manage FCC's own saved Claude Desktop gateway configuration."""
 
+from __future__ import annotations
+
 import getpass
 import hashlib
 import json

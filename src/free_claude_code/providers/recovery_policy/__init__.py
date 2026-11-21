@@ -5,6 +5,8 @@ and a jitter draw, return one transition. Admission reads the clock and the
 episode, applies the transition, and traces it.
 """
 
+from __future__ import annotations
+
 from .decision import (
     EpisodeView,
     Exhaust,

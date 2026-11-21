@@ -1,5 +1,7 @@
 """Ordered secret credentials and explicit credential selection."""
 
+from __future__ import annotations
+
 import json
 from typing import Annotated
 

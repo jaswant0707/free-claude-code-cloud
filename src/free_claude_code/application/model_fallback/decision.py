@@ -4,6 +4,8 @@ Pure: the caller supplies what the client has received and what the failed
 candidate left behind, and acts on the step returned.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from free_claude_code.core.stream_recovery import (

@@ -1,5 +1,7 @@
 """Shareable local diagnostics, without starting or changing FCC."""
 
+from __future__ import annotations
+
 import importlib
 import json
 import platform

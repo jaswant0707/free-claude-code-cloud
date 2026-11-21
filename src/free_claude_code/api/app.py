@@ -1,5 +1,7 @@
 """Pure FastAPI application factory."""
 
+from __future__ import annotations
+
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import (
     http_exception_handler,

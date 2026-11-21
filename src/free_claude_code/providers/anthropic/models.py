@@ -1,5 +1,7 @@
 """Immutable discovery records for Anthropic protocol conversion."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Literal
 

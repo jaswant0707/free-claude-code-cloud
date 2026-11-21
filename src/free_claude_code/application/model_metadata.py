@@ -1,5 +1,7 @@
 """Application-owned model metadata."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 from free_claude_code.core.model_capabilities import ModelInputModality

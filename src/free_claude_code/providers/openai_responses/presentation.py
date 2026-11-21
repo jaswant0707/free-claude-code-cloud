@@ -1,5 +1,7 @@
 """Client-protocol presenters for the shared Responses transport."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Iterable
 from typing import Protocol
 

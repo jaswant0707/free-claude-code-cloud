@@ -1,5 +1,7 @@
 """What one retryable failure does to its model's recovery episode."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from .timing import RecoveryTiming, retry_delay

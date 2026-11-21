@@ -1,5 +1,7 @@
 """One-time consolidation of legacy FCC dotenv state."""
 
+from __future__ import annotations
+
 import json
 import os
 import re

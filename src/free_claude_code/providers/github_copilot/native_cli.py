@@ -1,5 +1,7 @@
 """Native Copilot CLI checks without importing the Copilot SDK."""
 
+from __future__ import annotations
+
 import asyncio
 import os
 import re

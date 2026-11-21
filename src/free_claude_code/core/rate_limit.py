@@ -1,5 +1,7 @@
 """Shared strict sliding-window rate limiting primitives."""
 
+from __future__ import annotations
+
 import asyncio
 import time
 from collections import deque

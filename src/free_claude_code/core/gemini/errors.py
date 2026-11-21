@@ -1,5 +1,7 @@
 """Gemini compatibility errors and Google-shaped public failures."""
 
+from __future__ import annotations
+
 from ..json_types import JsonObject
 
 

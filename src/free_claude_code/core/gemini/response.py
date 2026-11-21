@@ -1,5 +1,7 @@
 """Gemini response serialization and non-streaming aggregation."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import Mapping
 from copy import deepcopy

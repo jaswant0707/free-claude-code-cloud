@@ -1,5 +1,7 @@
 """Native GenerateContent attempts using the shared execution/recovery owners."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from contextlib import aclosing

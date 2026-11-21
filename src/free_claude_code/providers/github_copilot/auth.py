@@ -1,5 +1,7 @@
 """Opt-in FCC connection state over native Copilot account credentials."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import os

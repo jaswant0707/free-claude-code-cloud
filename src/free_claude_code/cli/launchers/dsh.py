@@ -1,5 +1,7 @@
 """Installed DeepSeek Harness launcher with an FCC connection patch."""
 
+from __future__ import annotations
+
 import os
 import re
 import sys

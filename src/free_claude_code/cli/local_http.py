@@ -1,5 +1,7 @@
 """Direct HTTP transport for FCC-local traffic."""
 
+from __future__ import annotations
+
 from http.client import HTTPResponse
 from urllib.request import ProxyHandler, Request, build_opener
 

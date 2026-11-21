@@ -1,5 +1,7 @@
 """Direct Messages-source projection to Gemini candidates."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from copy import deepcopy
 from typing import cast

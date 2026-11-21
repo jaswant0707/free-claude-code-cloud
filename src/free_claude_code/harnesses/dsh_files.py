@@ -1,5 +1,7 @@
 """Round-trip YAML and cooperative locks for DSH-owned configuration files."""
 
+from __future__ import annotations
+
 import errno
 import io
 import os

@@ -1,5 +1,7 @@
 """Provider model-list discovery and background refresh."""
 
+from __future__ import annotations
+
 import re
 import socket
 import ssl

@@ -1,5 +1,7 @@
 """Project classifier content within one public attempt."""
 
+from __future__ import annotations
+
 from free_claude_code.core.anthropic.stream_contracts import parse_sse_text
 from free_claude_code.core.anthropic.streaming import format_sse_event
 

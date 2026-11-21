@@ -1,5 +1,7 @@
 """Convert the delivered native suffix without rewriting the client conversation."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import Mapping
 from copy import deepcopy

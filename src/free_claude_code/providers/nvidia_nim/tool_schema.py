@@ -1,5 +1,7 @@
 """NVIDIA NIM tool schema sanitization and private argument aliases."""
 
+from __future__ import annotations
+
 from typing import Any
 
 _SCHEMA_VALUE_KEYS = frozenset(

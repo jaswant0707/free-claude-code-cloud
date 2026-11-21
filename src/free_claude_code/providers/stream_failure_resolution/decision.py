@@ -4,6 +4,8 @@ Delivery is described by ``content_released``: ``None`` when the request has no
 public delivery, otherwise whether any content has reached the client.
 """
 
+from __future__ import annotations
+
 from enum import StrEnum
 
 

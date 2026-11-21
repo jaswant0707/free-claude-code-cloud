@@ -1,5 +1,7 @@
 """Bounded-memory estimate of the Chat input LM Studio will actually receive."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import Iterator, Mapping
 from typing import Any

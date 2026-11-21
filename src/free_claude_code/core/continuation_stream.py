@@ -1,5 +1,7 @@
 """Map continuation events into an existing public response lifecycle."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal

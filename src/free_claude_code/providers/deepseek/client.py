@@ -1,5 +1,7 @@
 """DeepSeek provider implementation (OpenAI-compatible Chat Completions)."""
 
+from __future__ import annotations
+
 from typing import Any
 
 from free_claude_code.config.constants import ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS

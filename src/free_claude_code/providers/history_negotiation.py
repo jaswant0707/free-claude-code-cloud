@@ -1,5 +1,7 @@
 """Request-local readable history negotiation and server-lifetime suggestions."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace

@@ -1,5 +1,7 @@
 """Authenticated local catalog acquisition for terminal launchers."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import Mapping
 from typing import Literal

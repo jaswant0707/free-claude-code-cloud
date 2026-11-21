@@ -1,5 +1,7 @@
 """Publish the application model inventory for Codex clients."""
 
+from __future__ import annotations
+
 import json
 import uuid
 from collections.abc import Mapping

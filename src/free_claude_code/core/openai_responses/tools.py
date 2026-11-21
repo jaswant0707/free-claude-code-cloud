@@ -1,5 +1,7 @@
 """Tool conversion helpers for the OpenAI Responses adapter."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import re

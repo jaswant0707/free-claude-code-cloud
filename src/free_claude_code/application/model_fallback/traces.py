@@ -1,5 +1,7 @@
 """Trace model fallback transitions."""
 
+from __future__ import annotations
+
 from loguru import logger
 
 from free_claude_code.core.failures import ExecutionFailure

@@ -1,5 +1,7 @@
 """Retain client tool items until Responses supplies authoritative completion."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 from copy import deepcopy

@@ -1,5 +1,7 @@
 """OpenCode rich-catalog parsing and provider-scoped snapshot ownership."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass

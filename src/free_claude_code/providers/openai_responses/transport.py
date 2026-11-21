@@ -1,5 +1,7 @@
 """Shared OpenAI Responses execution over the official SDK."""
 
+from __future__ import annotations
+
 import asyncio
 import uuid
 from collections.abc import (

@@ -4,6 +4,8 @@ The shell that applies ``stream_failure_resolution``'s rules: it owns every
 admission, credential and delivery effect of a streaming provider request.
 """
 
+from __future__ import annotations
+
 from .attempt import AttemptContext, TransportAttempt
 from .loop import AttemptPlan, FailureReporting, run_attempts
 

@@ -1,5 +1,7 @@
 """Discord outbound delivery."""
 
+from __future__ import annotations
+
 import asyncio
 import secrets
 from collections.abc import Awaitable, Callable

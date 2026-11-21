@@ -1,5 +1,7 @@
 """Provider execution shared by inbound API adapters."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import AsyncIterator, Callable, Mapping
 from types import MappingProxyType

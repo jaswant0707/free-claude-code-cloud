@@ -1,5 +1,7 @@
 """Project validated native Messages events directly to Chat completions."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from typing import Any
 from uuid import uuid4

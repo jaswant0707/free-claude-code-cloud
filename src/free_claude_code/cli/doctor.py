@@ -1,5 +1,7 @@
 """Print and copy a shareable local diagnostic report."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys

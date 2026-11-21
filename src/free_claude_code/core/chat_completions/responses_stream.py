@@ -1,5 +1,7 @@
 """Project Responses events directly to Chat, preserving typed reasoning."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 from typing import Any
 from uuid import uuid4

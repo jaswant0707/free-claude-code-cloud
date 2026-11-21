@@ -1,5 +1,7 @@
 """One setup, execution, and cleanup path for installed native harnesses."""
 
+from __future__ import annotations
+
 import os
 import re
 import secrets

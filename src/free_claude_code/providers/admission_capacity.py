@@ -1,5 +1,7 @@
 """Provider capacity shared by clients with independent credential recovery."""
 
+from __future__ import annotations
+
 import asyncio
 import time
 from collections import deque

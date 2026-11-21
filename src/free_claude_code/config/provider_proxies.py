@@ -1,5 +1,7 @@
 """Classification for provider proxies owned by the provider catalog."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 
 import httpx

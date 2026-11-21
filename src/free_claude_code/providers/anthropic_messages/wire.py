@@ -1,5 +1,7 @@
 """Shared Messages framing and upstream failure evidence."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import aclosing

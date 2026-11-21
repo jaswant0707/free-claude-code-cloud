@@ -1,5 +1,7 @@
 """OpenAI-compatible provider family."""
 
+from __future__ import annotations
+
 from free_claude_code.providers.admission import ProviderAdmissionController
 from free_claude_code.providers.base import ProviderConfig
 from free_claude_code.providers.history_negotiation import HistoryModeCache

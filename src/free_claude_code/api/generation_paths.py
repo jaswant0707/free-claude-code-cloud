@@ -1,5 +1,7 @@
 """Public generation route classification shared by HTTP boundaries."""
 
+from __future__ import annotations
+
 from typing import Literal
 
 type WireApi = Literal["messages", "responses", "gemini", "chat"]

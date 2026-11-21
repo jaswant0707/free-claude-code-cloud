@@ -10,6 +10,8 @@ model's jinja chat template with strict role-alternation rules and a fragile
 OpenAI provider layers its own native tool-call assembly and think-tag parsing on top.
 """
 
+from __future__ import annotations
+
 import asyncio
 import time
 from collections.abc import Mapping

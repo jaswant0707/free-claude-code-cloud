@@ -1,5 +1,7 @@
 """Pure, request-local projection of reasoning retained by the native harness."""
 
+from __future__ import annotations
+
 import base64
 import json
 from collections.abc import Iterator, Mapping, Sequence

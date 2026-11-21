@@ -8,6 +8,8 @@ contract, so this module mirrors the official client behavior rather than a
 documented request field.
 """
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 
 MISTRAL_AFFINITY_HEADER = "x-affinity"

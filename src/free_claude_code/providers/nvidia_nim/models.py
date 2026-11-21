@@ -5,6 +5,8 @@ tested hosted route and account, not permanent worldwide retirement. Remove
 an exclusion when hosted chat is verified to work again. New IDs remain visible.
 """
 
+from __future__ import annotations
+
 HOSTED_MODEL_EXCLUSIONS = frozenset(
     {
         # Hosted endpoint marked Deprecated by NVIDIA, checked 2026-10-21.

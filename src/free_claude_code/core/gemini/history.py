@@ -1,5 +1,7 @@
 """Validate Gemini call associations without changing caller-owned history."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from hashlib import sha256
 

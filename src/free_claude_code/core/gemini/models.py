@@ -1,5 +1,7 @@
 """The supported GenerateContent contract, independent of any client harness."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from typing import Literal, Self
 

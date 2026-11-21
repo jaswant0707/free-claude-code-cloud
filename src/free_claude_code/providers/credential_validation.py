@@ -5,6 +5,8 @@ management endpoints requiring a different key cannot validate inference keys.
 Failure defaults to unverified; rejection requires provider-specific evidence.
 """
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace

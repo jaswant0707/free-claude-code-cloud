@@ -6,6 +6,8 @@ the next mode after an HTTP 400. Deciding has no effects: what a rejection
 teaches is returned as a lesson for the attempt loop to apply.
 """
 
+from __future__ import annotations
+
 from collections.abc import Sequence
 
 from free_claude_code.core.history_replay import HistoryProtocol

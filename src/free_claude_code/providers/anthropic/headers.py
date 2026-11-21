@@ -1,5 +1,7 @@
 """Anthropic API credentials and request-owned protocol headers."""
 
+from __future__ import annotations
+
 import re
 from collections.abc import Mapping
 from copy import deepcopy

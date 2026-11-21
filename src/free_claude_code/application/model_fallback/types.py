@@ -1,5 +1,7 @@
 """The shapes a caller hands the model fallback sequence."""
 
+from __future__ import annotations
+
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Literal
 

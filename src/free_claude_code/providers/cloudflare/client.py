@@ -1,5 +1,7 @@
 """Cloudflare Workers AI provider using OpenAI-compatible chat completions."""
 
+from __future__ import annotations
+
 import math
 from collections.abc import Iterator, Mapping
 from dataclasses import replace

@@ -1,5 +1,7 @@
 """Provider-owned reasoning translations for OpenAI-compatible APIs."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Protocol
 

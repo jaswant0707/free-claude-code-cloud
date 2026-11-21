@@ -1,5 +1,7 @@
 """Single-Owner Authentication Router for Free Claude Code Cloud."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response

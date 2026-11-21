@@ -7,6 +7,8 @@ body), then admission's verdict, then a clean restart, then public recovery of
 delivered content, and finally the terminal failure.
 """
 
+from __future__ import annotations
+
 import asyncio
 import sys
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping

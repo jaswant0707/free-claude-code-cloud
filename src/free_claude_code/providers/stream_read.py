@@ -1,5 +1,7 @@
 """Bound one upstream event read without letting keep-alives renew the wait."""
 
+from __future__ import annotations
+
 import asyncio
 from collections.abc import AsyncIterator, Callable
 

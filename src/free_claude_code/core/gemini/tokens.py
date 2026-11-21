@@ -1,5 +1,7 @@
 """Best-effort text token estimates for Gemini input."""
 
+from __future__ import annotations
+
 import json
 
 from free_claude_code.core.token_estimation import estimate_text_tokens

@@ -1,5 +1,7 @@
 """Chat-client writer for semantic events from a translated upstream."""
 
+from __future__ import annotations
+
 from free_claude_code.core.chat_completions.response import ChatOutput, chat_frame
 from free_claude_code.core.failures import ExecutionFailure
 from free_claude_code.core.openai_responses import openai_error_from_failure

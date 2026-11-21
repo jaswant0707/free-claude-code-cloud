@@ -8,6 +8,8 @@ note that tells the model what was removed and asks it to tell the user. The
 model is remembered so later requests replace media before they are sent.
 """
 
+from __future__ import annotations
+
 import copy
 from collections.abc import Mapping
 from dataclasses import dataclass

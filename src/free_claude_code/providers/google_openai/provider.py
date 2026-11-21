@@ -1,5 +1,7 @@
 """Shared Google behavior for OpenAI-compatible Gemini endpoints."""
 
+from __future__ import annotations
+
 from collections.abc import Iterator, Mapping
 from copy import deepcopy
 from typing import Any

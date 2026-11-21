@@ -4,6 +4,8 @@ Adapter factories live in :mod:`providers.runtime.factory`; this module stays fr
 provider implementation imports (see contract tests).
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import StrEnum
 

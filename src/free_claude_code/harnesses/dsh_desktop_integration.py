@@ -1,5 +1,7 @@
 """Write, compare, and remove FCC's entries in DSH Desktop's native files."""
 
+from __future__ import annotations
+
 import copy
 import os
 from collections.abc import Generator

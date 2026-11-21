@@ -1,5 +1,7 @@
 """Declarative profiles for ordinary OpenAI-compatible providers."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass

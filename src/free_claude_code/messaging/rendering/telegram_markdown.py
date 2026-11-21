@@ -4,6 +4,8 @@ Renders common Markdown into Telegram MarkdownV2 format.
 Used by the message handler and Telegram platform adapter.
 """
 
+from __future__ import annotations
+
 from markdown_it import MarkdownIt
 
 from .markdown_tables import normalize_gfm_tables

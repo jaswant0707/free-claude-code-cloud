@@ -1,5 +1,7 @@
 """How long a model waits before its next recovery probe."""
 
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime

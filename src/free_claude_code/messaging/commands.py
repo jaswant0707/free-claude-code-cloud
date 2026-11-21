@@ -3,6 +3,8 @@
 Commands depend on MessagingCommandContext instead of the concrete workflow.
 """
 
+from __future__ import annotations
+
 from loguru import logger
 
 from .command_context import MessagingCommandContext

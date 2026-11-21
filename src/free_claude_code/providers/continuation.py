@@ -1,5 +1,7 @@
 """Same-provider continuation using evidence from the public delivery boundary."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, replace
 from typing import Any
 

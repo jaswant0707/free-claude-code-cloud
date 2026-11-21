@@ -1,5 +1,7 @@
 """Best-effort text copy for the diagnostic command."""
 
+from __future__ import annotations
+
 import pyperclip
 
 

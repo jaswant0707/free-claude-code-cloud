@@ -1,5 +1,7 @@
 """Installed Antigravity CLI launcher with session-only FCC settings."""
 
+from __future__ import annotations
+
 import re
 from collections.abc import Sequence
 

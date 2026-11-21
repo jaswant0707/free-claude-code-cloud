@@ -1,5 +1,7 @@
 """Copilot control encoding from advertised model capabilities."""
 
+from __future__ import annotations
+
 from dataclasses import replace
 
 from free_claude_code.application.errors import InvalidRequestError

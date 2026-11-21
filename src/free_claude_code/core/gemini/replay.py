@@ -1,5 +1,7 @@
 """Stateless source-native state carried in Gemini's opaque signature field."""
 
+from __future__ import annotations
+
 import base64
 import binascii
 import json

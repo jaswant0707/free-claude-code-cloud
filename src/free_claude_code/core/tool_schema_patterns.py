@@ -1,5 +1,7 @@
 """Portable Unicode exclusions for Claude tool parameter schemas."""
 
+from __future__ import annotations
+
 import re
 import unicodedata
 from functools import cache

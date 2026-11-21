@@ -1,5 +1,7 @@
 """Lightweight entrypoint for the optional FCC desktop shell."""
 
+from __future__ import annotations
+
 import subprocess
 import sys
 from collections.abc import Sequence

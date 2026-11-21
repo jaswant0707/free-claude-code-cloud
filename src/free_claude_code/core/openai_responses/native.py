@@ -1,5 +1,7 @@
 """Native OpenAI Responses request and event handling."""
 
+from __future__ import annotations
+
 import uuid
 from collections.abc import Mapping
 from copy import deepcopy

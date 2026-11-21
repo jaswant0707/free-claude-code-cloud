@@ -1,5 +1,7 @@
 """Direct Responses-source projection to Gemini candidates."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 from typing import Any
 from uuid import uuid4

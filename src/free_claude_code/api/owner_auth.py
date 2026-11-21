@@ -1,5 +1,7 @@
 """Single-Owner Authentication and Session Security Module for Free Claude Code Cloud."""
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import hmac

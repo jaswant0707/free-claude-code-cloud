@@ -1,5 +1,7 @@
 """The single result of classifying one upstream failure."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from free_claude_code.core.failures import FailureKind

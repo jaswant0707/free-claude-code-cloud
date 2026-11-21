@@ -1,5 +1,7 @@
 """Single production composition root for the FCC server."""
 
+from __future__ import annotations
+
 import os
 from functools import partial
 from pathlib import Path

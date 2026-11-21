@@ -1,5 +1,7 @@
 """Provider model-list response parsing helpers."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
 from typing import Any, TypeIs

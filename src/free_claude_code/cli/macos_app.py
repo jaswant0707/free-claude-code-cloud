@@ -1,5 +1,7 @@
 """Construct the macOS application around the installed managed Python runtime."""
 
+from __future__ import annotations
+
 import os
 import platform
 import plistlib

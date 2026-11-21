@@ -5,6 +5,8 @@ return the repairs worth trying and the next step. ``attempt_loop`` makes the
 calls these rules depend on and carries out what they decide.
 """
 
+from __future__ import annotations
+
 from .decision import (
     NextStep,
     Repair,
