@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
-from typing import Any, TypeIs
+from typing import Any
+
+try:
+    from typing import TypeIs
+except ImportError:
+    try:
+        from typing_extensions import TypeIs
+    except ImportError:
+        TypeIs = Any  # type: ignore[assignment,misc]
 
 from free_claude_code.application.model_metadata import (
     ProviderModelInfo as _ProviderModelInfo,
