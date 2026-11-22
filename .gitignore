@@ -49,6 +49,9 @@ htmlcov/
 *.env
 *.pem
 *.key
+*.token
+*.secret
+*.credentials
 
 # Vercel & Deployment Caches
 .vercel/
