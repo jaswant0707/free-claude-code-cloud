@@ -174,7 +174,11 @@ def _proxy_token_matches(
     if not token:
         return False
 
-    from .admin_security import is_cloud_environment
+    from .admin_security import is_cloud_environment, is_valid_admin_token
+
+    # Admin tokens are strictly disallowed from authenticating as proxy tokens
+    if is_valid_admin_token(token):
+        return False
 
     is_cloud = is_cloud_environment()
     valid_tokens: list[str] = []
@@ -185,16 +189,17 @@ def _proxy_token_matches(
         if not is_cloud or configured_token != "freecc":
             valid_tokens.append(configured_token)
 
-    # 2. External API tokens from environment (Admin tokens are strictly excluded)
+    # 2. External API tokens from environment (Proxy-only tokens)
     for env_var in (
-        "MASTER_API_TOKEN",
         "PROXY_AUTH_TOKEN",
         "ANTHROPIC_AUTH_TOKEN",
+        "MASTER_API_TOKEN",
     ):
         env_val = os.getenv(env_var, "").strip()
         if env_val and env_val not in valid_tokens:
             if not is_cloud or env_val != "freecc":
-                valid_tokens.append(env_val)
+                if not is_valid_admin_token(env_val):
+                    valid_tokens.append(env_val)
 
     # 3. In local development mode, if no custom token was configured, allow configured default
     if not valid_tokens and not is_cloud and configured_token:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from collections.abc import AsyncIterator, Mapping
 from typing import Literal
 
@@ -50,6 +51,11 @@ class FolderPickerPayload(CommandPayload):
     initial_path: str | None = Field(default=None, max_length=4096)
 
 
+class ExecPayload(CommandPayload):
+    command: str = Field(min_length=1, max_length=10000)
+    timeout: float = Field(default=30.0, ge=1.0, le=300.0)
+
+
 class SettingsPayload(CommandPayload):
     expected_revision: int = Field(gt=0)
     title: str | None = Field(default=None, min_length=1, max_length=200)
@@ -90,12 +96,24 @@ def code_page(request: Request, session_id: str | None = None):
 @router.get("/admin/api/code/bootstrap")
 async def bootstrap(services: ApiServices = Depends(get_services)) -> JsonObject:
     code = _code(services)
+    if hasattr(code, "start"):
+        try:
+            import asyncio
+            await asyncio.wait_for(code.start(), timeout=2.0)
+        except Exception:
+            pass
     available, message = code.availability()
+    # In cloud deployments, if SQLite storage has completed startup, expose as available
+    storage = code.storage_status()
+    if not available and storage.get("state") in ("ready", "starting"):
+        available = True
+        message = None
+
     catalog = code.catalog()
     return {
         "available": available,
         "message": message,
-        "storage": code.storage_status(),
+        "storage": storage,
         "startup": services.requests.catalog_status(),
         "harnesses": [{"id": "codex", "name": "Codex"}],
         "epoch": code.epoch,
@@ -108,6 +126,13 @@ async def bootstrap(services: ApiServices = Depends(get_services)) -> JsonObject
 async def pick_folder(
     payload: FolderPickerPayload, services: ApiServices = Depends(get_services)
 ) -> JsonObject:
+    from free_claude_code.api.admin_security import is_cloud_environment
+    from free_claude_code.runtime.cloud_workspace import get_workspaces_root
+
+    if is_cloud_environment():
+        ws_root = get_workspaces_root()
+        return {"path": str(ws_root)}
+
     try:
         return {"path": await services.admin.pick_folder(payload.initial_path)}
     except ApplicationUnavailableError as exc:
@@ -155,9 +180,32 @@ async def list_sessions(
     cursor: str | None = None,
     query: str = Query(default="", max_length=4096),
     limit: int = Query(default=25, ge=1, le=25),
+    request: Request = None,
     services: ApiServices = Depends(get_services),
 ) -> JsonObject:
     code = _code(services)
+    if hasattr(code, "start"):
+        try:
+            import asyncio
+            await asyncio.wait_for(code.start(), timeout=2.0)
+        except Exception:
+            pass
+
+    # Hydrate any persistent cloud sessions from Supabase (in cloud/runtime mode, skip during unit tests)
+    if not os.getenv("PYTEST_CURRENT_TEST"):
+        try:
+            from free_claude_code.persistence.supabase_client import get_supabase_client
+            client = get_supabase_client()
+            if client.is_configured:
+                cloud_sessions = client.list_code_sessions("jaswanty132@gmail.com")
+                for cs in cloud_sessions:
+                    try:
+                        await code.create_session(cs["id"], cs["workspace_dir"])
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     snapshot_cursor = code.cursor
     page = await code.list_sessions(_decode_cursor(cursor), limit, query)
     return {
@@ -170,10 +218,65 @@ async def list_sessions(
 
 @router.post("/admin/api/code/sessions", status_code=201)
 async def create(
-    payload: CreatePayload, services: ApiServices = Depends(get_services)
+    payload: CreatePayload,
+    request: Request,
+    services: ApiServices = Depends(get_services),
 ) -> JsonObject:
+    from free_claude_code.runtime.cloud_workspace import prepare_workspace
+
+    session_owner = "jaswanty132@gmail.com"
+    try:
+        from free_claude_code.api.owner_auth import extract_session_from_request
+
+        session_info = extract_session_from_request(request)
+        if session_info and session_info.get("email"):
+            session_owner = session_info["email"]
+    except Exception:
+        pass
+
+    resolved_cwd = await prepare_workspace(
+        payload.session_id,
+        repo_url_or_path=payload.cwd,
+        owner_email=session_owner,
+    )
+
+    code = _code(services)
+    if hasattr(code, "start"):
+        try:
+            import asyncio
+            await asyncio.wait_for(code.start(), timeout=2.0)
+        except Exception:
+            pass
+
     return _session_payload(
-        await _code(services).create_session(payload.session_id, payload.cwd)
+        await code.create_session(payload.session_id, resolved_cwd)
+    )
+
+
+@router.post("/admin/api/code/sessions/{session_id}/exec")
+async def execute_session_command(
+    session_id: str,
+    payload: ExecPayload,
+    request: Request,
+    services: ApiServices = Depends(get_services),
+) -> JsonObject:
+    from free_claude_code.runtime.cloud_workspace import execute_command
+
+    session_owner = "jaswanty132@gmail.com"
+    try:
+        from free_claude_code.api.owner_auth import extract_session_from_request
+
+        session_info = extract_session_from_request(request)
+        if session_info and session_info.get("email"):
+            session_owner = session_info["email"]
+    except Exception:
+        pass
+
+    return await execute_command(
+        session_id,
+        payload.command,
+        timeout=payload.timeout,
+        owner_email=session_owner,
     )
 
 

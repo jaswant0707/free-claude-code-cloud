@@ -72,6 +72,37 @@ def _get_configured_admin_tokens() -> list[str]:
     return tokens
 
 
+def _is_proxy_token(token: str) -> bool:
+    """Check if token is strictly a proxy-only token."""
+    for var in ("ANTHROPIC_AUTH_TOKEN", "PROXY_AUTH_TOKEN"):
+        val = os.getenv(var, "").strip()
+        if val and secrets.compare_digest(token.encode("utf-8"), val.encode("utf-8")):
+            return True
+    return False
+
+
+def is_valid_admin_token(token: str) -> bool:
+    """Verify if token is a valid master/admin token."""
+    if not token or _is_proxy_token(token):
+        return False
+
+    # Check configured admin tokens
+    for expected in _get_configured_admin_tokens():
+        if secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8")):
+            return True
+
+    # Check Supabase stored master token hash
+    try:
+        from free_claude_code.persistence.owner_auth_db import verify_master_token_hash
+
+        if verify_master_token_hash(token):
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
 def is_cloud_environment() -> bool:
     """Check if the server is running in a cloud or remote deployment."""
     return bool(
@@ -99,31 +130,22 @@ def is_authorized_admin(request: Request) -> bool:
     except Exception:
         pass
 
-    tokens = _get_configured_admin_tokens()
-    if not tokens:
-        return False
-
     # 1. Check Authorization: Bearer <token>
     auth_header = request.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):
         token = auth_header[7:].strip()
-        for expected in tokens:
-            if secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8")):
-                return True
+        if is_valid_admin_token(token):
+            return True
 
     # 2. Check Cookie: fcc_admin_token
     cookie_token = request.cookies.get("fcc_admin_token", "").strip()
-    if cookie_token:
-        for expected in tokens:
-            if secrets.compare_digest(cookie_token.encode("utf-8"), expected.encode("utf-8")):
-                return True
+    if cookie_token and is_valid_admin_token(cookie_token):
+        return True
 
     # 3. Check x-admin-token header
     header_token = request.headers.get("x-admin-token", "").strip()
-    if header_token:
-        for expected in tokens:
-            if secrets.compare_digest(header_token.encode("utf-8"), expected.encode("utf-8")):
-                return True
+    if header_token and is_valid_admin_token(header_token):
+        return True
 
     return False
 

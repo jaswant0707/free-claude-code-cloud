@@ -22,4 +22,5 @@ github-copilot-sdk>=1.0.34
 simplejson>=3.19.0
 sqlalchemy>=2.0.0
 ruamel-yaml>=0.18.0
+cryptography>=42.0.0
 typing-extensions>=4.12.0

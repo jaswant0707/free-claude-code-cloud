@@ -12,6 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
+from loguru import logger
 from free_claude_code.core.interprocess_lock import InterprocessFileLock
 
 from .env_files import (
@@ -81,6 +82,106 @@ class ManagedConfigStore:
     def initialize(self, env: Mapping[str, str] | None = None) -> None:
         with self._storage_lock():
             consolidate_managed_config(dict(os.environ if env is None else env))
+            self._sync_from_supabase()
+
+    def _sync_from_supabase(self) -> None:
+        """Hydrate local managed config and process env with persistent Supabase settings."""
+        try:
+            from free_claude_code.config.provider_catalog import PROVIDER_CATALOG
+            from free_claude_code.persistence.supabase_client import get_supabase_client
+
+            client = get_supabase_client()
+            if not client.is_configured:
+                return
+
+            provider_to_env = {
+                pid: (p.credential_env, p.display_name)
+                for pid, p in PROVIDER_CATALOG.items()
+                if p.credential_env
+            }
+
+            configs = client.list_provider_configs(decrypt=True)
+            settings = client.get_app_settings()
+
+            if not configs and not settings:
+                return
+
+            managed = (
+                dict(dotenv_values_from_file(self.path))
+                if self.path.is_file()
+                else {}
+            )
+            updated = False
+
+            for conf in configs:
+                pid = conf.get("provider_id")
+                key = conf.get("api_key")
+                is_active = conf.get("is_active", True)
+                if not is_active or not key:
+                    continue
+                if pid in provider_to_env:
+                    env_var = provider_to_env[pid][0]
+                    if managed.get(env_var) != key:
+                        managed[env_var] = key
+                        os.environ[env_var] = key
+                        updated = True
+                if conf.get("is_default") and conf.get("default_model"):
+                    default_route = f"{pid}/{conf['default_model']}"
+                    if not os.environ.get("MODEL") and not managed.get("MODEL"):
+                        managed["MODEL"] = default_route
+                        os.environ["MODEL"] = default_route
+                        updated = True
+
+            for k, v in settings.items():
+                if v and managed.get(k) != v:
+                    managed[k] = v
+                    os.environ[k] = v
+                    updated = True
+
+            if updated and managed:
+                atomic_write_managed_config(managed, path=self.path)
+        except Exception as exc:
+            logger.warning("Failed to sync managed config from Supabase: {}", exc)
+
+    def _sync_to_supabase(self, values: Mapping[str, str]) -> None:
+        """Persist updated provider keys and application settings to Supabase."""
+        try:
+            from free_claude_code.config.provider_catalog import PROVIDER_CATALOG
+            from free_claude_code.persistence.supabase_client import get_supabase_client
+
+            client = get_supabase_client()
+            if not client.is_configured:
+                return
+
+            env_to_provider = {
+                p.credential_env: (pid, p.display_name)
+                for pid, p in PROVIDER_CATALOG.items()
+                if p.credential_env
+            }
+
+            for key, val in values.items():
+                if key in env_to_provider:
+                    pid, name = env_to_provider[key]
+                    clean_val = val.strip() if val else ""
+                    if clean_val:
+                        client.upsert_provider_config(
+                            provider_id=pid,
+                            provider_name=name,
+                            raw_api_key=clean_val,
+                            is_active=True,
+                        )
+                    else:
+                        client.delete_provider_config(pid)
+                elif key in (
+                    "MODEL",
+                    "MODEL_FALLBACKS",
+                    "DEFAULT_REASONING_EFFORT",
+                    "PROVIDER_RATE_LIMIT",
+                    "PROXY_AUTH_ENABLED",
+                ):
+                    client.upsert_app_setting(key, val)
+        except Exception as exc:
+            logger.warning("Failed to sync managed config to Supabase: {}", exc)
 
     def _read_managed(self) -> dict[str, str]:
         if not self.path.is_file():
@@ -126,6 +227,7 @@ class ManagedConfigStore:
                     "Configuration changed while saving. Reopen the modal before saving again."
                 )
             atomic_write_managed_config(values, path=self.path)
+            self._sync_to_supabase(values)
 
     def repair_invalid_provider_proxies(
         self,

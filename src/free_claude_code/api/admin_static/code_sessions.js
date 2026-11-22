@@ -746,8 +746,9 @@
         folder.autocomplete = "off";
         label(form, "Harness", harness);
         const field = element("div", undefined, "code-field");
-        const caption = element("label", "Folder");
+        const caption = element("label", "Cloud Workspace or Git URL");
         folder.id = `code-folder-${id}`;
+        folder.placeholder = "https://github.com/... or cloud-project-name";
         caption.htmlFor = folder.id;
         const row = element("div", undefined, "code-folder-row");
         let selectedPath = null;
@@ -770,7 +771,7 @@
             ? "Line breaks in this folder name are shown as ␍ and ␊."
             : "";
         }
-        const browse = button("Browse…", async () => {
+        const browse = button("Workspaces…", async () => {
           if (!context.isOpen() || context.isBusy()) return;
           const initial = readFolder();
           context.setBusy(true);
@@ -800,7 +801,7 @@
         form.append(
           element(
             "p",
-            "Choose an existing folder on the computer running FCC. You can also enter its path manually.",
+            "Enter a Git repository URL to clone (e.g. https://github.com/...) or enter a cloud workspace folder name. Workspaces are isolated environments in Free Claude Code Cloud.",
             "code-notice",
           ),
         );
