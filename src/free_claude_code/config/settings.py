@@ -860,3 +860,17 @@ class Settings(BaseModel):
                 "Set it in the Admin UI."
             )
         return self
+
+    @model_validator(mode="after")
+    def bound_cloud_timeouts(self) -> Settings:
+        is_cloud = bool(
+            os.getenv("FCC_CLOUD_DEPLOYMENT", "").lower() in ("1", "true", "yes")
+            or os.getenv("VERCEL")
+            or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+        )
+        if is_cloud:
+            # On serverless platforms with a 60s function limit, cap http_read_timeout to 45s
+            # so gateway can gracefully failover or return a 504 before Vercel kills the container.
+            if self.http_read_timeout > 50.0:
+                object.__setattr__(self, "http_read_timeout", 45.0)
+        return self

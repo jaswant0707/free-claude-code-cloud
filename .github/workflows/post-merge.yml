@@ -79,7 +79,7 @@ jobs:
 
   publish:
     name: Publish to PyPI
-    if: github.ref == 'refs/heads/main' && github.repository == 'Alishahryar1/free-claude-code'
+    if: github.ref == 'refs/heads/main'
     runs-on: macos-latest
     timeout-minutes: 15
     environment: pypi

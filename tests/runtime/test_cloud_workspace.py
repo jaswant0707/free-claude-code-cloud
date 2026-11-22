@@ -213,3 +213,104 @@ def test_cleanup_expired_workspaces(tmp_path, monkeypatch):
     assert not old_dir.exists()
     assert fresh_dir.exists()
 
+
+@pytest.mark.asyncio
+async def test_background_command_lifecycle(tmp_path, monkeypatch):
+    """Verify background commands start immediately and capture logs/status asynchronously."""
+    from free_claude_code.runtime.cloud_workspace import (
+        start_background_command,
+        get_command_task_status,
+    )
+
+    monkeypatch.setenv("FCC_WORKSPACES_DIR", str(tmp_path))
+    session_id = "test-bg-lifecycle"
+    await prepare_workspace(session_id)
+
+    cmd = f'"{sys.executable}" -c "import time; print(\'CHUNK_1\'); time.sleep(0.2); print(\'CHUNK_2\')"'
+    res = await start_background_command(session_id, cmd, timeout=10.0)
+
+    assert "task_id" in res
+    assert res["status"] == "running"
+    task_id = res["task_id"]
+
+    # Poll status until finished
+    for _ in range(30):
+        status = await get_command_task_status(session_id, task_id)
+        if status and status.get("status") in ("completed", "failed"):
+            break
+        await asyncio.sleep(0.1)
+
+    assert status is not None
+    assert status["status"] == "completed"
+    assert status["exit_code"] == 0
+    assert "CHUNK_1" in status["stdout"]
+    assert "CHUNK_2" in status["stdout"]
+    assert status["duration"] > 0
+
+    cleanup_workspace(session_id)
+
+
+@pytest.mark.asyncio
+async def test_background_command_duplicate_guard(tmp_path, monkeypatch):
+    """Verify starting duplicate command on the same session returns existing task."""
+    from free_claude_code.runtime.cloud_workspace import (
+        start_background_command,
+        cancel_command_task,
+    )
+
+    monkeypatch.setenv("FCC_WORKSPACES_DIR", str(tmp_path))
+    session_id = "test-bg-dup"
+    await prepare_workspace(session_id)
+
+    cmd = f'"{sys.executable}" -c "import time; time.sleep(5)"'
+    task1 = await start_background_command(session_id, cmd, timeout=10.0)
+    task2 = await start_background_command(session_id, cmd, timeout=10.0)
+
+    assert task1["task_id"] == task2["task_id"]
+    await cancel_command_task(session_id, task1["task_id"])
+    cleanup_workspace(session_id)
+
+
+@pytest.mark.asyncio
+async def test_background_command_cancellation(tmp_path, monkeypatch):
+    """Verify background command cancellation terminates the process."""
+    from free_claude_code.runtime.cloud_workspace import (
+        start_background_command,
+        cancel_command_task,
+        get_command_task_status,
+    )
+
+    monkeypatch.setenv("FCC_WORKSPACES_DIR", str(tmp_path))
+    session_id = "test-bg-cancel"
+    await prepare_workspace(session_id)
+
+    cmd = f'"{sys.executable}" -c "import time; time.sleep(15)"'
+    task = await start_background_command(session_id, cmd, timeout=20.0)
+    task_id = task["task_id"]
+
+    await asyncio.sleep(0.2)
+    cancelled = await cancel_command_task(session_id, task_id)
+    assert cancelled is True
+
+    status = await get_command_task_status(session_id, task_id)
+    assert status is not None
+    assert status["status"] == "cancelled"
+
+    cleanup_workspace(session_id)
+
+
+def test_cloud_timeout_settings_validator(monkeypatch):
+    """Verify http_read_timeout is automatically capped to 45s in cloud/Vercel environments."""
+    from free_claude_code.config.settings import Settings
+
+    # Local mode: allowed to be 120s
+    monkeypatch.delenv("FCC_CLOUD_DEPLOYMENT", raising=False)
+    monkeypatch.delenv("VERCEL", raising=False)
+    local_s = Settings(http_read_timeout=120.0)
+    assert local_s.http_read_timeout == 120.0
+
+    # Cloud mode: automatically bounded to 45.0s to prevent Vercel 60s hard kill
+    monkeypatch.setenv("FCC_CLOUD_DEPLOYMENT", "1")
+    cloud_s = Settings(http_read_timeout=120.0)
+    assert cloud_s.http_read_timeout == 45.0
+

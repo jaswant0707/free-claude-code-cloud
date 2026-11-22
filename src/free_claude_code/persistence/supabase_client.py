@@ -15,15 +15,10 @@ from typing import Any, Final
 from loguru import logger
 import httpx
 
-from .crypto import decrypt_secret, encrypt_secret, mask_secret
+from .crypto import _DEFAULT_ANON_KEY, decrypt_secret, encrypt_secret, mask_secret
 
 # Default Supabase configuration for FCC Cloud
 _DEFAULT_SUPABASE_URL: Final[str] = "https://emlenqcewhlwtnigwkac.supabase.co"
-_DEFAULT_ANON_KEY: Final[str] = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtbGVucWNld2hsd3RuaWd3a2FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUzNTI4MjIsImV4cCI6MjExMDkyODgyMn0."
-    "qZz-V-6TpUrfrH9OTOA53GLWRekHgGIop1TcA3EOLz8"
-)
 
 
 class SupabaseClient:
@@ -300,6 +295,40 @@ class SupabaseClient:
             {"p_id": session_id, "p_owner_email": owner_email},
         )
         return bool(result)
+
+    def upsert_code_run(
+        self,
+        session_id: str,
+        run_id: str,
+        command: str,
+        status: str,
+        output: str | None = None,
+        error: str | None = None,
+        exit_code: int | None = None,
+        duration: float | None = None,
+        finished_at: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Upsert a code run for background execution tracking and status persistence."""
+        payload = {
+            "p_session_id": session_id,
+            "p_id": run_id,
+            "p_command": command,
+            "p_status": status,
+            "p_output": output,
+            "p_error": error,
+            "p_exit_code": exit_code,
+            "p_duration": duration,
+            "p_finished_at": finished_at,
+        }
+        return self._rpc("fcc_upsert_code_run", payload)
+
+    def get_code_run(self, session_id: str, run_id: str) -> dict[str, Any] | None:
+        """Retrieve persisted code run state, output, and completion status."""
+        return self._rpc("fcc_get_code_run", {"p_session_id": session_id, "p_id": run_id})
+
+    def list_code_runs(self, session_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        """List code runs for a session in descending ordinal order."""
+        return self._rpc("fcc_list_code_runs", {"p_session_id": session_id, "p_limit": limit}) or []
 
     # --------------------------------------------------------------------------
     # Audit Events

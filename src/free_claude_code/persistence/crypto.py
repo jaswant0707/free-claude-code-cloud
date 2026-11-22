@@ -23,6 +23,13 @@ from typing import Final
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+# Default anon key fallback for backward-compatible key derivation
+_DEFAULT_ANON_KEY: Final[str] = (
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtbGVucWNld2hsd3RuaWd3a2FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUzNTI4MjIsImV4cCI6MjExMDkyODgyMn0."
+    "qZz-V-6TpUrfrH9OTOA53GLWRekHgGIop1TcA3EOLz8"
+)
+
 # Salt for dedicated AES-256-GCM key derivation
 _DEDICATED_SALT: Final[bytes] = b"fcc-dedicated-v2-encryption-salt"
 # Legacy salt for decrypting unmigrated records
@@ -45,14 +52,12 @@ def get_encryption_key() -> bytes:
         seed = f"fcc-aes256-gcm-key-v1:{supabase_key}"
         return hashlib.sha256(seed.encode("utf-8") + _LEGACY_SALT).digest()
 
-    from .supabase_client import _DEFAULT_ANON_KEY
     seed = f"fcc-aes256-gcm-key-v1:{_DEFAULT_ANON_KEY}"
     return hashlib.sha256(seed.encode("utf-8") + _LEGACY_SALT).digest()
 
 
 def get_legacy_encryption_key() -> bytes:
     """Derive the legacy v1 encryption key for backward-compatibility migrations."""
-    from .supabase_client import _DEFAULT_ANON_KEY
     supabase_key = os.getenv("SUPABASE_ANON_KEY", "").strip() or _DEFAULT_ANON_KEY
     seed = f"fcc-aes256-gcm-key-v1:{supabase_key}"
     return hashlib.sha256(seed.encode("utf-8") + _LEGACY_SALT).digest()

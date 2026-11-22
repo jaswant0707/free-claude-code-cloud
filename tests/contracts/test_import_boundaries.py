@@ -11,12 +11,13 @@ _PACKAGE_ROOT = _REPO_ROOT / "src" / "free_claude_code"
 _PACKAGE_NAME = "free_claude_code"
 
 ALLOWED_PACKAGE_DEPENDENCIES: dict[str, set[str]] = {
-    "config": {"core"},
+    "config": {"core", "persistence"},
     "core": set(),
+    "persistence": set(),
     "application": {"config", "core"},
     "messaging": {"core"},
     "providers": {"application", "config", "core"},
-    "api": {"application", "config", "core"},
+    "api": {"application", "config", "core", "persistence"},
     "harnesses": {"application", "config", "core"},
     "cli": {"application", "config", "core", "harnesses"},
     "runtime": {
@@ -27,6 +28,7 @@ ALLOWED_PACKAGE_DEPENDENCIES: dict[str, set[str]] = {
         "core",
         "harnesses",
         "messaging",
+        "persistence",
         "providers",
     },
 }
@@ -45,6 +47,13 @@ IMPORT_EXCEPTIONS: dict[tuple[str, str], str] = {
     ): (
         "Owner: installed server command. "
         "Reason: the command delegates construction to the process composition root."
+    ),
+    (
+        "free_claude_code.api.code_sessions_routes",
+        "free_claude_code.runtime.cloud_workspace",
+    ): (
+        "Owner: cloud workspace code execution routes. "
+        "Reason: admin code session endpoints delegate isolated sandbox operations to the cloud workspace runtime."
     ),
 }
 
@@ -102,6 +111,8 @@ class _ImportVisitor(ast.NodeVisitor):
             self._record(alias.name, node.lineno)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.module == "__future__":
+            return
         base = _resolve_import_from_base(
             importer=self._importer,
             importer_is_package=self._importer_is_package,

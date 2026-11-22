@@ -9,6 +9,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from .owner_auth import (
+    AccountLockedError,
+    DatabaseAuthError,
     authenticate_owner,
     check_login_rate_limit,
     clear_session_cookie,
@@ -44,10 +46,17 @@ def login(payload: LoginPayload, request: Request, response: Response):
     if not check_login_rate_limit(client_ip):
         raise HTTPException(
             status_code=429,
-            detail="Too many failed login attempts. Please wait a minute before trying again.",
+            detail="Too many failed login attempts from this network. Please wait a minute before trying again.",
         )
 
-    if not authenticate_owner(payload.email, payload.password):
+    try:
+        is_authenticated = authenticate_owner(payload.email, payload.password)
+    except AccountLockedError as exc:
+        raise HTTPException(status_code=423, detail=str(exc))
+    except DatabaseAuthError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    if not is_authenticated:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     token = create_session_token(payload.email)

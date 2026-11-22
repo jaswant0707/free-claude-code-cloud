@@ -54,6 +54,12 @@ class FolderPickerPayload(CommandPayload):
 class ExecPayload(CommandPayload):
     command: str = Field(min_length=1, max_length=10000)
     timeout: float = Field(default=30.0, ge=1.0, le=300.0)
+    background: bool = Field(default=False)
+
+
+class JobPayload(CommandPayload):
+    command: str = Field(min_length=1, max_length=10000)
+    timeout: float = Field(default=120.0, ge=1.0, le=600.0)
 
 
 class SettingsPayload(CommandPayload):
@@ -260,7 +266,11 @@ async def execute_session_command(
     request: Request,
     services: ApiServices = Depends(get_services),
 ) -> JsonObject:
-    from free_claude_code.runtime.cloud_workspace import execute_command
+    from free_claude_code.api.admin_security import is_cloud_environment
+    from free_claude_code.runtime.cloud_workspace import (
+        execute_command,
+        start_background_command,
+    )
 
     session_owner = "jaswanty132@gmail.com"
     try:
@@ -272,12 +282,150 @@ async def execute_session_command(
     except Exception:
         pass
 
+    # If background execution is explicitly requested OR running in cloud serverless with timeout > 25s,
+    # immediately start a background task to prevent Vercel 60-second gateway timeout.
+    if payload.background or (is_cloud_environment() and payload.timeout > 25.0):
+        task_info = await start_background_command(
+            session_id,
+            payload.command,
+            timeout=payload.timeout,
+            owner_email=session_owner,
+        )
+        return {
+            **task_info,
+            "background": True,
+            "message": "Command running as background task. Poll /runs/{task_id} or stream logs via SSE.",
+        }
+
     return await execute_command(
         session_id,
         payload.command,
         timeout=payload.timeout,
         owner_email=session_owner,
     )
+
+
+@router.post("/admin/api/code/sessions/{session_id}/jobs", status_code=202)
+async def create_background_job(
+    session_id: str,
+    payload: JobPayload,
+    request: Request,
+    services: ApiServices = Depends(get_services),
+) -> JsonObject:
+    """Launch a non-blocking background job, returning immediately with task_id for polling/streaming."""
+    from free_claude_code.runtime.cloud_workspace import start_background_command
+
+    session_owner = "jaswanty132@gmail.com"
+    try:
+        from free_claude_code.api.owner_auth import extract_session_from_request
+
+        session_info = extract_session_from_request(request)
+        if session_info and session_info.get("email"):
+            session_owner = session_info["email"]
+    except Exception:
+        pass
+
+    return await start_background_command(
+        session_id,
+        payload.command,
+        timeout=payload.timeout,
+        owner_email=session_owner,
+    )
+
+
+@router.get("/admin/api/code/sessions/{session_id}/runs/{task_id}")
+async def get_job_run_status(
+    session_id: str,
+    task_id: str,
+    services: ApiServices = Depends(get_services),
+) -> JsonObject:
+    """Retrieve status, live partial logs, exit code, and timing for a specific run."""
+    from free_claude_code.runtime.cloud_workspace import get_command_task_status
+
+    status = await get_command_task_status(session_id, task_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Background job run not found.")
+    return status
+
+
+@router.post("/admin/api/code/sessions/{session_id}/runs/{task_id}/cancel")
+async def cancel_job_run(
+    session_id: str,
+    task_id: str,
+    services: ApiServices = Depends(get_services),
+) -> JsonObject:
+    """Cancel a running background job and clean up its process tree."""
+    from free_claude_code.runtime.cloud_workspace import cancel_command_task
+
+    cancelled = await cancel_command_task(session_id, task_id)
+    return {"session_id": session_id, "task_id": task_id, "cancelled": cancelled}
+
+
+@router.get(
+    "/admin/api/code/sessions/{session_id}/runs/{task_id}/stream",
+    response_class=EventSourceResponse,
+)
+async def stream_job_run_logs(
+    session_id: str,
+    task_id: str,
+    services: ApiServices = Depends(get_services),
+) -> AsyncIterator[ServerSentEvent]:
+    """SSE stream yielding real-time chunks of stdout/stderr and final job completion event."""
+    from free_claude_code.runtime.cloud_workspace import get_command_task_status
+    import asyncio
+
+    last_stdout_len = 0
+    last_stderr_len = 0
+    poll_intervals = 0
+    max_idle_polls = 240  # 120s max streaming connection
+
+    while poll_intervals < max_idle_polls:
+        status = await get_command_task_status(session_id, task_id)
+        if not status:
+            yield ServerSentEvent(event="job.error", data={"error": "Job run not found"})
+            break
+
+        cur_stdout = status.get("stdout", "")
+        cur_stderr = status.get("stderr", "")
+        new_stdout = cur_stdout[last_stdout_len:]
+        new_stderr = cur_stderr[last_stderr_len:]
+
+        if new_stdout or new_stderr:
+            last_stdout_len = len(cur_stdout)
+            last_stderr_len = len(cur_stderr)
+            yield ServerSentEvent(
+                event="job.chunk",
+                data={
+                    "task_id": task_id,
+                    "stdout_chunk": new_stdout,
+                    "stderr_chunk": new_stderr,
+                    "status": status.get("status"),
+                },
+            )
+
+        if status.get("status") in ("completed", "failed", "cancelled", "timeout"):
+            yield ServerSentEvent(
+                event="job.completed",
+                data=status,
+            )
+            break
+
+        await asyncio.sleep(0.5)
+        poll_intervals += 1
+
+
+@router.get("/admin/api/code/sessions/{session_id}/runs")
+async def list_session_runs(
+    session_id: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    services: ApiServices = Depends(get_services),
+) -> JsonObject:
+    """List historical and active code runs for a session."""
+    from free_claude_code.persistence.supabase_client import get_supabase_client
+
+    client = get_supabase_client()
+    runs = client.list_code_runs(session_id, limit=limit) if client.is_configured else []
+    return {"session_id": session_id, "runs": runs}
 
 
 @router.post("/admin/api/code/sessions/{session_id}/cancel")

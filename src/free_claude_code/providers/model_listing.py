@@ -9,10 +9,7 @@ from typing import Any
 try:
     from typing import TypeIs
 except ImportError:
-    try:
-        from typing_extensions import TypeIs
-    except ImportError:
-        TypeIs = Any  # type: ignore[assignment,misc]
+    from typing_extensions import TypeIs
 
 from free_claude_code.application.model_metadata import (
     ProviderModelInfo as _ProviderModelInfo,

@@ -25,6 +25,32 @@ MAX_ATTEMPTS_PER_WINDOW = 5
 _login_attempts: dict[str, list[float]] = {}
 
 
+class OwnerAuthError(Exception):
+    """Base exception for owner authentication errors."""
+    pass
+
+
+class AccountLockedError(OwnerAuthError):
+    """Raised when the owner account is temporarily locked due to too many failed attempts."""
+
+    def __init__(self, minutes_remaining: int):
+        self.minutes_remaining = max(1, minutes_remaining)
+        super().__init__(
+            f"Account is temporarily locked due to multiple failed login attempts. "
+            f"Please try again after {self.minutes_remaining} minute(s)."
+        )
+
+
+class DatabaseAuthError(OwnerAuthError):
+    """Raised when the database service cannot be reached to verify credentials."""
+
+    def __init__(
+        self,
+        message: str = "Authentication database service is temporarily unavailable. Please try again shortly.",
+    ):
+        super().__init__(message)
+
+
 def get_owner_email() -> str | None:
     """Retrieve the single configured owner email from environment."""
     email = os.getenv("OWNER_EMAIL", "").strip()
@@ -47,22 +73,53 @@ def get_master_api_token() -> str | None:
 
 
 _PROCESS_FALLBACK_SIGNING_SECRET = secrets.token_hex(32)
+_PERSISTENT_SIGNING_SECRET: str | None = None
 
 
 def _get_signing_key() -> bytes:
     """Derive an internal cryptographic signing key for session tokens without hardcoded fallbacks."""
+    global _PERSISTENT_SIGNING_SECRET
+
+    # 1. Check explicit environment variables
     secret = (
         os.getenv("FCC_SESSION_SECRET", "").strip()
         or os.getenv("SESSION_SECRET", "").strip()
         or os.getenv("FCC_ENCRYPTION_KEY", "").strip()
     )
-    if not secret:
-        password = get_owner_password()
-        token = get_master_api_token()
-        if password or token:
-            secret = f"{password}:{token}"
-        else:
-            secret = _PROCESS_FALLBACK_SIGNING_SECRET
+    if secret:
+        return hashlib.sha256(secret.encode("utf-8")).digest()
+
+    # 2. Check cached persistent secret in memory
+    if _PERSISTENT_SIGNING_SECRET:
+        return hashlib.sha256(_PERSISTENT_SIGNING_SECRET.encode("utf-8")).digest()
+
+    # 3. Fetch or persist a persistent signing key in Supabase fcc_app_settings across serverless containers
+    if not os.getenv("PYTEST_CURRENT_TEST"):
+        try:
+            from free_claude_code.persistence.supabase_client import get_supabase_client
+
+            client = get_supabase_client()
+            if client.is_configured:
+                settings = client.get_app_settings()
+                stored = settings.get("session_signing_secret")
+                if stored and len(stored) >= 32:
+                    _PERSISTENT_SIGNING_SECRET = stored
+                    return hashlib.sha256(_PERSISTENT_SIGNING_SECRET.encode("utf-8")).digest()
+                else:
+                    new_secret = secrets.token_hex(32)
+                    client.upsert_app_setting("session_signing_secret", new_secret, is_secret=False)
+                    _PERSISTENT_SIGNING_SECRET = new_secret
+                    return hashlib.sha256(_PERSISTENT_SIGNING_SECRET.encode("utf-8")).digest()
+        except Exception as exc:
+            logger.warning("Could not retrieve or persist session signing secret from database: {}", exc)
+
+    # 4. Fallback to owner password/token or per-process secret
+    password = get_owner_password()
+    token = get_master_api_token()
+    if password or token:
+        secret = f"{password}:{token}"
+    else:
+        secret = _PROCESS_FALLBACK_SIGNING_SECRET
     return hashlib.sha256(secret.encode("utf-8")).digest()
 
 
@@ -83,19 +140,23 @@ def check_login_rate_limit(client_ip: str) -> bool:
 
 def authenticate_owner(email: str, password: str) -> bool:
     """Validate credentials against the configured owner in database or environment."""
-    configured_email = get_owner_email() or "jaswanty132@gmail.com"
+    if not email or not password:
+        return False
+
     clean_email = email.strip().lower()
+    configured_email = (get_owner_email() or "jaswanty132@gmail.com").strip().lower()
 
     # Verify target email matches configured single owner
-    if not secrets.compare_digest(
+    email_matches_config = secrets.compare_digest(
         clean_email.encode("utf-8"),
-        configured_email.strip().lower().encode("utf-8"),
-    ):
-        return False
+        configured_email.encode("utf-8"),
+    )
 
     # In unit tests or for non-production example domains, skip remote Supabase owner checks
     # to ensure isolated, repeatable test execution without cross-worker database lockouts.
-    if os.getenv("PYTEST_CURRENT_TEST") and clean_email.endswith("@example.com"):
+    if os.getenv("PYTEST_CURRENT_TEST") and (clean_email.endswith("@example.com") or not email_matches_config):
+        if not email_matches_config:
+            return False
         configured_password = get_owner_password()
         if configured_password:
             return secrets.compare_digest(
@@ -105,6 +166,7 @@ def authenticate_owner(email: str, password: str) -> bool:
         return False
 
     # 1. Check Supabase database owner record
+    db_failed = False
     try:
         from free_claude_code.persistence.owner_auth_db import (
             get_owner_record,
@@ -124,11 +186,19 @@ def authenticate_owner(email: str, password: str) -> bool:
 
                 try:
                     lock_time = datetime.fromisoformat(locked_until.replace("Z", "+00:00"))
-                    if datetime.now(timezone.utc) < lock_time:
-                        logger.warning("Owner account is temporarily locked.")
-                        return False
-                except Exception:
-                    pass
+                    now = datetime.now(timezone.utc)
+                    if now < lock_time:
+                        seconds_remaining = (lock_time - now).total_seconds()
+                        mins_remaining = int(seconds_remaining // 60) + 1
+                        logger.warning(
+                            "Owner account is temporarily locked ({} minute(s) remaining).",
+                            mins_remaining,
+                        )
+                        raise AccountLockedError(minutes_remaining=mins_remaining)
+                except AccountLockedError:
+                    raise
+                except Exception as parse_err:
+                    logger.warning("Could not parse locked_until timestamp: {}", parse_err)
 
             pw_hash = record.get("password_hash")
             if pw_hash and verify_password(password, pw_hash):
@@ -139,12 +209,15 @@ def authenticate_owner(email: str, password: str) -> bool:
                 update_owner_login(clean_email, success=False)
                 get_supabase_client().record_audit_event("owner_login_failure", actor_email=clean_email)
                 return False
+    except AccountLockedError:
+        raise
     except Exception as exc:
+        db_failed = True
         logger.warning("Database authentication check encountered an error: {}", exc)
 
     # 2. Fallback to configured environment password
     configured_password = get_owner_password()
-    if configured_password:
+    if configured_password and email_matches_config:
         password_matches = secrets.compare_digest(
             password.encode("utf-8"),
             configured_password.encode("utf-8"),
@@ -161,6 +234,10 @@ def authenticate_owner(email: str, password: str) -> bool:
             except Exception:
                 pass
             return True
+
+    # If database lookup failed due to network/RPC error and no env fallback succeeded
+    if db_failed and not configured_password:
+        raise DatabaseAuthError("Authentication database service is temporarily unavailable. Please try again shortly.")
 
     return False
 
@@ -226,10 +303,11 @@ def verify_session_token(token: str) -> dict[str, Any] | None:
         return None
 
     # Verify owner email matches
-    configured_email = get_owner_email()
-    if configured_email and not secrets.compare_digest(
-        payload.get("email", "").lower().encode("utf-8"),
-        configured_email.lower().encode("utf-8"),
+    token_email = payload.get("email", "").strip().lower()
+    configured_email = (get_owner_email() or "jaswanty132@gmail.com").strip().lower()
+    if not secrets.compare_digest(
+        token_email.encode("utf-8"),
+        configured_email.encode("utf-8"),
     ):
         return None
 

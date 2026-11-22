@@ -11,9 +11,11 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final
 from urllib.parse import urlparse
@@ -33,6 +35,35 @@ _SAFE_GIT_URL_REGEX: Final[re.Pattern[str]] = re.compile(
 
 # Active processes per session for cancellation
 _active_processes: dict[str, asyncio.subprocess.Process] = {}
+
+class CommandTask:
+    """Represents a durable asynchronous background execution task."""
+
+    def __init__(
+        self,
+        task_id: str,
+        session_id: str,
+        command: str,
+        timeout: float = 120.0,
+        owner_email: str = "jaswanty132@gmail.com",
+    ) -> None:
+        self.task_id = task_id
+        self.session_id = session_id
+        self.command = command
+        self.timeout = timeout
+        self.owner_email = owner_email
+        self.status = "running"
+        self.stdout = ""
+        self.stderr = ""
+        self.exit_code: int | None = None
+        self.duration: float = 0.0
+        self.created_at = datetime.now(timezone.utc).isoformat()
+        self.finished_at: str | None = None
+        self.proc: asyncio.subprocess.Process | None = None
+        self.subscribers: list[asyncio.Queue[str | None]] = []
+
+
+_background_tasks: dict[str, CommandTask] = {}
 
 # Blocked SSRF hostnames and metadata endpoints
 _BLOCKED_HOSTS: Final[set[str]] = {
@@ -155,9 +186,17 @@ async def prepare_workspace(
                     stderr=subprocess.PIPE,
                     env=get_isolated_sandbox_env(session_id, ws_path),
                 )
-                stdout, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    logger.warning("Git clone failed: {}", stderr.decode(errors="replace"))
+                try:
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+                    if proc.returncode != 0:
+                        logger.warning("Git clone failed: {}", stderr.decode(errors="replace"))
+                except asyncio.TimeoutError:
+                    try:
+                        proc.kill()
+                        await proc.communicate()
+                    except Exception:
+                        pass
+                    logger.warning("Git clone timed out after 30 seconds for {}", repo_url)
             except Exception as exc:
                 logger.warning("Could not clone repository: {}", exc)
         elif Path(target).is_dir():
@@ -200,6 +239,290 @@ async def prepare_workspace(
     return str(ws_path)
 
 
+async def _run_command_task(task: CommandTask) -> None:
+    """Worker task executing the shell command in isolated environment with real-time streaming."""
+    ws_path = get_session_workspace_path(task.session_id, create=True)
+    start_time = time.time()
+    sandbox_env = get_isolated_sandbox_env(task.session_id, ws_path)
+
+    proc = None
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            task.command,
+            cwd=str(ws_path),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=sandbox_env,
+        )
+        task.proc = proc
+        _active_processes[task.session_id] = proc
+
+        stdout_buf: list[str] = []
+        stderr_buf: list[str] = []
+
+        async def _read_pipe(stream: asyncio.StreamReader | None, is_err: bool) -> None:
+            if stream is None:
+                return
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                decoded = line.decode("utf-8", errors="replace")
+                if is_err:
+                    stderr_buf.append(decoded)
+                    line_data = f"stderr: {decoded}"
+                else:
+                    stdout_buf.append(decoded)
+                    line_data = f"stdout: {decoded}"
+
+                task.stdout = "".join(stdout_buf)
+                task.stderr = "".join(stderr_buf)
+
+                # Cap output
+                if len(task.stdout) > _MAX_OUTPUT_BYTES:
+                    task.stdout = task.stdout[:_MAX_OUTPUT_BYTES] + "\n... [Output truncated at 512KB limit]"
+                if len(task.stderr) > _MAX_OUTPUT_BYTES:
+                    task.stderr = task.stderr[:_MAX_OUTPUT_BYTES] + "\n... [Stderr truncated at 512KB limit]"
+
+                for q in list(task.subscribers):
+                    try:
+                        q.put_nowait(line_data)
+                    except Exception:
+                        pass
+
+        stdout_reader = asyncio.create_task(_read_pipe(proc.stdout, False))
+        stderr_reader = asyncio.create_task(_read_pipe(proc.stderr, True))
+
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(proc.wait(), stdout_reader, stderr_reader),
+                timeout=task.timeout,
+            )
+            task.duration = round(time.time() - start_time, 3)
+            if task.status != "cancelled":
+                task.exit_code = proc.returncode
+                task.status = "completed" if proc.returncode == 0 else "failed"
+                task.finished_at = datetime.now(timezone.utc).isoformat()
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            task.duration = round(time.time() - start_time, 3)
+            task.status = "timeout"
+            task.exit_code = -1
+            task.stderr += f"\nCommand timed out after {task.timeout} seconds"
+            task.finished_at = datetime.now(timezone.utc).isoformat()
+        except asyncio.CancelledError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            task.duration = round(time.time() - start_time, 3)
+            task.status = "cancelled"
+            task.exit_code = -1
+            task.finished_at = datetime.now(timezone.utc).isoformat()
+
+    except Exception as exc:
+        if task.status != "cancelled":
+            task.status = "failed"
+            task.stderr = f"Execution failed: {exc}"
+            task.exit_code = 1
+            task.duration = round(time.time() - start_time, 3)
+            task.finished_at = datetime.now(timezone.utc).isoformat()
+    finally:
+        _active_processes.pop(task.session_id, None)
+        if proc:
+            for pipe in (proc.stdout, proc.stderr):
+                if pipe and hasattr(pipe, "_transport") and pipe._transport:
+                    try:
+                        pipe._transport.close()
+                    except Exception:
+                        pass
+
+        # Notify active streaming subscribers of termination
+        for q in list(task.subscribers):
+            try:
+                q.put_nowait(None)
+            except Exception:
+                pass
+
+        # Persist final state in Supabase fcc_code_runs
+        try:
+            client = get_supabase_client()
+            if client.is_configured:
+                client.upsert_code_run(
+                    task.session_id,
+                    task.task_id,
+                    task.command,
+                    task.status,
+                    output=task.stdout,
+                    error=task.stderr,
+                    exit_code=task.exit_code,
+                    duration=task.duration,
+                    finished_at=task.finished_at,
+                )
+        except Exception as exc:
+            logger.warning("Could not persist background task in Supabase: {}", exc)
+
+
+async def start_background_command(
+    session_id: str,
+    command: str,
+    timeout: float = 120.0,
+    owner_email: str = "jaswanty132@gmail.com",
+) -> dict[str, Any]:
+    """Start an isolated background execution task and return its task_id immediately."""
+    # Prevent duplicate execution of identical running command
+    for existing in _background_tasks.values():
+        if (
+            existing.session_id == session_id
+            and existing.command == command
+            and existing.status == "running"
+        ):
+            return {
+                "task_id": existing.task_id,
+                "session_id": session_id,
+                "command": command,
+                "status": "running",
+                "message": "Duplicate command execution prevented; task already active",
+                "created_at": existing.created_at,
+            }
+
+    # SSRF protection
+    cmd_lower = command.lower()
+    for blocked in _BLOCKED_HOSTS:
+        if blocked in cmd_lower:
+            return {
+                "task_id": f"run_{secrets.token_hex(8)}",
+                "session_id": session_id,
+                "command": command,
+                "exit_code": 1,
+                "stdout": "",
+                "stderr": f"Execution rejected: access to internal host '{blocked}' is prohibited.",
+                "duration": 0.0,
+                "status": "blocked",
+            }
+
+    task_id = f"run_{secrets.token_hex(8)}"
+    task = CommandTask(
+        task_id=task_id,
+        session_id=session_id,
+        command=command,
+        timeout=timeout,
+        owner_email=owner_email,
+    )
+    _background_tasks[task_id] = task
+
+    # Persist initial running state in Supabase
+    try:
+        client = get_supabase_client()
+        if client.is_configured:
+            client.upsert_code_run(session_id, task_id, command, "running")
+    except Exception as exc:
+        logger.warning("Failed to initialize background task in Supabase: {}", exc)
+
+    asyncio.create_task(_run_command_task(task))
+    return {
+        "task_id": task_id,
+        "session_id": session_id,
+        "command": command,
+        "status": "running",
+        "created_at": task.created_at,
+    }
+
+
+async def get_command_task_status(session_id: str, task_id: str) -> dict[str, Any] | None:
+    """Retrieve real-time or persisted task status from memory or Supabase."""
+    task = _background_tasks.get(task_id)
+    if task and task.session_id == session_id:
+        return {
+            "task_id": task.task_id,
+            "session_id": task.session_id,
+            "command": task.command,
+            "status": task.status,
+            "stdout": task.stdout,
+            "stderr": task.stderr,
+            "exit_code": task.exit_code,
+            "duration": task.duration,
+            "created_at": task.created_at,
+            "finished_at": task.finished_at,
+        }
+
+    # Fallback to Supabase database for recovery across serverless restarts
+    try:
+        client = get_supabase_client()
+        if client.is_configured:
+            row = client.get_code_run(session_id, task_id)
+            if row:
+                return {
+                    "task_id": row["id"],
+                    "session_id": row["session_id"],
+                    "command": row["command"],
+                    "status": row["status"],
+                    "stdout": row.get("output") or "",
+                    "stderr": row.get("error") or "",
+                    "exit_code": row.get("exit_code"),
+                    "duration": row.get("duration") or 0.0,
+                    "created_at": row.get("created_at"),
+                    "finished_at": row.get("finished_at"),
+                }
+    except Exception as exc:
+        logger.warning("Failed to fetch task from Supabase: {}", exc)
+
+    return None
+
+
+async def cancel_command_task(session_id: str, task_id: str) -> bool:
+    """Cancel a running task by task_id in memory and database."""
+    task = _background_tasks.get(task_id)
+    if task and task.session_id == session_id:
+        if task.proc and task.proc.returncode is None:
+            try:
+                task.proc.kill()
+            except Exception:
+                pass
+        task.status = "cancelled"
+        task.finished_at = datetime.now(timezone.utc).isoformat()
+        try:
+            client = get_supabase_client()
+            if client.is_configured:
+                client.upsert_code_run(
+                    session_id,
+                    task_id,
+                    task.command,
+                    "cancelled",
+                    output=task.stdout,
+                    error=task.stderr,
+                    exit_code=-1,
+                    finished_at=task.finished_at,
+                )
+        except Exception:
+            pass
+        return True
+
+    # If not in memory, cancel in Supabase
+    try:
+        client = get_supabase_client()
+        if client.is_configured:
+            row = client.get_code_run(session_id, task_id)
+            if row and row.get("status") == "running":
+                client.upsert_code_run(
+                    session_id,
+                    task_id,
+                    row["command"],
+                    "cancelled",
+                    output=row.get("output"),
+                    error=row.get("error"),
+                    exit_code=-1,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                return True
+    except Exception:
+        pass
+    return False
+
+
 async def execute_command(
     session_id: str,
     command: str,
@@ -207,6 +530,15 @@ async def execute_command(
     owner_email: str = "jaswanty132@gmail.com",
 ) -> dict[str, Any]:
     """Execute a shell or cli command inside the isolated session workspace with stripped environment."""
+    # In cloud serverless environments, cap synchronous execution to 25.0s so it completes well before Vercel 60s hard kill
+    is_cloud = bool(
+        os.getenv("FCC_CLOUD_DEPLOYMENT", "").lower() in ("1", "true", "yes")
+        or os.getenv("VERCEL")
+        or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+    )
+    if is_cloud and timeout > 25.0:
+        timeout = 25.0
+
     ws_path = get_session_workspace_path(session_id, create=True)
     start_time = time.time()
     logger.info("Executing command in workspace {}: {}", ws_path, command)
@@ -226,6 +558,7 @@ async def execute_command(
             }
 
     proc = None
+    run_id = f"sync_{secrets.token_hex(6)}"
     try:
         sandbox_env = get_isolated_sandbox_env(session_id, ws_path)
         proc = await asyncio.create_subprocess_shell(
@@ -260,19 +593,31 @@ async def execute_command(
             "status": "completed" if exit_code == 0 else "failed",
         }
 
-        # Log audit and run records
+        # Log audit and run records in Supabase
         try:
             client = get_supabase_client()
-            client.record_audit_event(
-                "command_executed",
-                actor_email=owner_email,
-                details={
-                    "session_id": session_id,
-                    "command": command,
-                    "exit_code": exit_code,
-                    "duration": duration,
-                },
-            )
+            if client.is_configured:
+                client.upsert_code_run(
+                    session_id,
+                    run_id,
+                    command,
+                    result["status"],
+                    output=stdout,
+                    error=stderr,
+                    exit_code=exit_code,
+                    duration=duration,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                client.record_audit_event(
+                    "command_executed",
+                    actor_email=owner_email,
+                    details={
+                        "session_id": session_id,
+                        "command": command,
+                        "exit_code": exit_code,
+                        "duration": duration,
+                    },
+                )
         except Exception:
             pass
 

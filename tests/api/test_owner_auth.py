@@ -292,3 +292,40 @@ def test_tampered_and_expired_session_rejected(owner_app):
     exp_resp = expired_client.get("/api/auth/session")
     assert exp_resp.status_code == 200
     assert exp_resp.json() == {"authenticated": False, "email": None}
+
+
+def test_account_lockout_returns_423(owner_app, monkeypatch):
+    """Verify active account lockout returns HTTP 423 with time remaining."""
+    from free_claude_code.api.owner_auth import AccountLockedError
+    import free_claude_code.api.auth_routes as auth_mod
+
+    def mock_locked(email, password):
+        raise AccountLockedError(minutes_remaining=12)
+
+    monkeypatch.setattr(auth_mod, "authenticate_owner", mock_locked)
+    client = TestClient(owner_app, base_url="https://cloud.example.com")
+    resp = client.post(
+        "/api/auth/login",
+        json={"email": TEST_OWNER_EMAIL, "password": TEST_OWNER_PASSWORD},
+    )
+    assert resp.status_code == 423
+    assert "temporarily locked" in resp.json()["detail"]
+    assert "12 minute(s)" in resp.json()["detail"]
+
+
+def test_database_auth_error_returns_503(owner_app, monkeypatch):
+    """Verify database connection failure returns HTTP 503 rather than masking as invalid credentials."""
+    from free_claude_code.api.owner_auth import DatabaseAuthError
+    import free_claude_code.api.auth_routes as auth_mod
+
+    def mock_db_err(email, password):
+        raise DatabaseAuthError("Authentication database service is temporarily unavailable.")
+
+    monkeypatch.setattr(auth_mod, "authenticate_owner", mock_db_err)
+    client = TestClient(owner_app, base_url="https://cloud.example.com")
+    resp = client.post(
+        "/api/auth/login",
+        json={"email": TEST_OWNER_EMAIL, "password": TEST_OWNER_PASSWORD},
+    )
+    assert resp.status_code == 503
+    assert "temporarily unavailable" in resp.json()["detail"]

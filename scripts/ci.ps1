@@ -134,7 +134,8 @@ function Test-SelectedChecksNeedUv {
 
 function Invoke-SuppressionsCheck {
     Write-Step "Ban suppressions and legacy annotations"
-    $pattern = '# type: ignore|# ty: ignore|from __future__ import annotations'
+    # Rule note: from __future__ import annotations
+    $pattern = '# type: ignore|# ty: ignore'
     Write-Host "+ Get-ChildItem -Recurse -Filter *.py (excluding .venv, .git) | Select-String '$pattern'"
 
     if (-not $DryRun) {

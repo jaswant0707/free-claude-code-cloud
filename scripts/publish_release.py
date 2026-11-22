@@ -227,6 +227,9 @@ def main() -> int:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--commit", required=True)
     args = parser.parse_args()
+    if args.repository != "Alishahryar1/free-claude-code":
+        print(f"Skipping PyPI release on fork repository: {args.repository}")
+        return 0
     try:
         Publisher(args.repository).publish(args.commit)
     except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as error:

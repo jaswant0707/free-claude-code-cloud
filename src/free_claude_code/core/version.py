@@ -9,13 +9,14 @@ from importlib.metadata import version as distribution_version
 
 _DISTRIBUTION_NAME = "free-claude-code"
 _BASE_VERSION = "1.0.0"
+_UNKNOWN_VERSION = "0+unknown"
 
 
 def package_version() -> str:
     """Return installed metadata, git commit version, or explicit release version."""
     try:
         ver = distribution_version(_DISTRIBUTION_NAME)
-        if ver and ver != "0+unknown":
+        if ver and ver != _UNKNOWN_VERSION:
             return ver
     except PackageNotFoundError:
         pass
@@ -25,16 +26,4 @@ def package_version() -> str:
     if commit_sha:
         return f"{_BASE_VERSION}+{commit_sha[:8]}"
 
-    # Try local git
-    try:
-        short_sha = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.DEVNULL,
-            timeout=1.0,
-        ).decode("utf-8").strip()
-        if short_sha:
-            return f"{_BASE_VERSION}+{short_sha}"
-    except Exception:
-        pass
-
-    return f"{_BASE_VERSION}+cloud"
+    return _UNKNOWN_VERSION
