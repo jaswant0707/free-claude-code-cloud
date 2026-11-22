@@ -24,12 +24,10 @@ def get_encryption_key() -> bytes:
     if explicit_key:
         return hashlib.sha256(explicit_key.encode("utf-8")).digest()
 
-    owner_pw = os.getenv("OWNER_PASSWORD", "").strip()
-    admin_token = os.getenv("ADMIN_AUTH_TOKEN", "").strip()
-    master_token = os.getenv("MASTER_API_TOKEN", "").strip()
-    project_id = os.getenv("VERCEL_PROJECT_ID", "").strip()
+    from .supabase_client import _DEFAULT_ANON_KEY
 
-    seed = f"fcc-aes-key-v1:{owner_pw}:{admin_token}:{master_token}:{project_id}"
+    supabase_key = os.getenv("SUPABASE_ANON_KEY", "").strip() or _DEFAULT_ANON_KEY
+    seed = f"fcc-aes256-gcm-key-v1:{supabase_key}"
     return hashlib.sha256(seed.encode("utf-8") + _HKDF_SALT).digest()
 
 
