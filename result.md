@@ -6,7 +6,7 @@
 **Login Portal:** [https://free-claude-code-cloud.vercel.app/login](https://free-claude-code-cloud.vercel.app/login)  
 **Production Git Repository:** [https://github.com/jaswant0707/free-claude-code-cloud.git](https://github.com/jaswant0707/free-claude-code-cloud.git)  
 **Active Production Branch:** `main`  
-**Latest Production Commit:** `ae857455`  
+**Latest Production Commit:** `cb25cf9a`  
 **Dedicated Database (Supabase):** `emlenqcewhlwtnigwkac` (`https://emlenqcewhlwtnigwkac.supabase.co`)  
 **Database Region:** `us-east-1` (Low latency to Vercel `iad1` edge instances)  
 **Owner Account:** `jaswanty132@gmail.com`  
