@@ -40,6 +40,7 @@
     root,
     feed,
     epoch,
+    lastCursor = null,
     connected = false,
     synchronized = false;
   let desiredPath = null,
@@ -223,6 +224,7 @@
 
   function receive(type, event) {
     const data = JSON.parse(event.data);
+    if (data.cursor !== undefined) lastCursor = data.cursor;
     if (data.epoch !== epoch) return;
     const previousRevision = records.get(data.session_id)?.session?.revision;
     let outputChanged = false;
@@ -433,6 +435,7 @@
     connected = true;
     clearTimeout(retryTimer);
     retryTimer = null;
+    if (readyData.cursor !== undefined) lastCursor = readyData.cursor;
     if (epoch !== readyData.epoch) {
       if (epoch) {
         catalogVersion = null;
@@ -497,8 +500,11 @@
   }
 
   function connect() {
-    if (feed || retryTimer !== null) return;
-    const source = new EventSource(`${base}/events`);
+    if (feed || retryTimer !== null || !viewActive || (typeof document !== "undefined" && document.hidden)) return;
+    const url = lastCursor !== null
+      ? `${base}/events?cursor=${encodeURIComponent(lastCursor)}`
+      : `${base}/events`;
+    const source = new EventSource(url);
     feed = source;
     source.addEventListener("feed.ready", (event) => {
       if (feed === source) void synchronize(JSON.parse(event.data));
@@ -522,7 +528,20 @@
       void bootstrap();
     };
     source.addEventListener("feed.resync_required", disconnected);
-    source.onerror = disconnected;
+    source.onopen = () => {
+      if (feed !== source) return;
+      connected = true;
+      syncNotice = "";
+      render();
+    };
+    source.onerror = () => {
+      if (feed !== source) return;
+      // If readyState is 0 (CONNECTING), EventSource is automatically reconnecting after server bounded cycle
+      if (source.readyState === 0) {
+        return;
+      }
+      disconnected();
+    };
   }
 
   function replaceDeletedRoute(id) {
@@ -1690,10 +1709,25 @@
     }
     form.append(actions);
   }
+  function pauseFeed() {
+    if (feed) {
+      feed.close();
+      feed = null;
+    }
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    connected = false;
+  }
+  function resumeFeed() {
+    if (typeof document !== "undefined" && !document.hidden && viewActive) {
+      connect();
+    }
+  }
   function deactivate() {
     viewActive = false;
     clearActivity();
     dismissDialog();
+    pauseFeed();
   }
   window.addEventListener("pagehide", deactivate);
   function pauseCatalog() {
@@ -1705,8 +1739,13 @@
   }
   window.addEventListener("pagehide", pauseCatalog);
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) pauseCatalog();
-    else void bootstrap();
+    if (document.hidden) {
+      pauseCatalog();
+      pauseFeed();
+    } else {
+      resumeFeed();
+      void bootstrap();
+    }
   });
   window.CodeSessions = {
     setProviderNames(providers) {

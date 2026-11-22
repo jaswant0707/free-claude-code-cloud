@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
@@ -70,6 +71,19 @@ class EventSubscription:
             if isinstance(item, PublishedEvent):
                 yield item
 
+    async def next_event(self) -> PublishedEvent | None:
+        """Wait for the next event on this subscription."""
+        if self._closed:
+            return None
+        item = await self._queue.get()
+        if item is _CLOSED:
+            return None
+        if isinstance(item, _Overflow):
+            raise EventOverflowError(item.cursor)
+        if isinstance(item, PublishedEvent):
+            return item
+        return None
+
     async def aclose(self) -> None:
         if self._closed:
             return
@@ -95,11 +109,29 @@ class EventPublisher:
         self._queue_size = queue_size
         self._sequence = 0
         self._subscriptions: set[EventSubscription] = set()
+        self._history: deque[PublishedEvent] = deque(maxlen=256)
         self._closed = False
 
     @property
     def cursor(self) -> int:
         return self._sequence
+
+    def events_since(self, cursor: int) -> tuple[list[PublishedEvent], bool]:
+        """Return published events since cursor and whether a resync is required.
+
+        Returns:
+            (events, resync_required):
+            - If up to date: ([], False)
+            - If valid cursor with events: ([events...], False)
+            - If overflowed or invalid: ([], True)
+        """
+        if cursor == self._sequence:
+            return ([], False)
+        if 0 <= cursor < self._sequence:
+            if not self._history or cursor >= (self._history[0].id - 1):
+                return ([e for e in self._history if e.id > cursor], False)
+            return ([], True)
+        return ([], True)
 
     def subscribe(self) -> EventSubscription:
         if self._closed:
@@ -117,6 +149,7 @@ class EventPublisher:
             raise RuntimeError("session event publisher is closed.")
         self._sequence += 1
         published = PublishedEvent(event=event, id=self._sequence, data={**data})
+        self._history.append(published)
         for subscription in tuple(self._subscriptions):
             try:
                 subscription._queue.put_nowait(published)

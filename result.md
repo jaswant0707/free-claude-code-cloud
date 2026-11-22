@@ -383,8 +383,63 @@ Full application regression suite: 11,519 passed, zero regressions.
 
 ---
 
-## 7. Operational Checklist & Production Readout
+### Issue 3: Admin Dashboard CSS/JS Asset Loading & Path Encoding
 
+#### Root Causes Discovered
+1. **RFC 1866 Form-URL Decoding on Vercel Path Rewrites:**
+   - `vercel.json` rewrote `/(.*)` to `/api/index.py?__url_path=/$1`.
+   - `api/index.py` previously read `target_path = request.query_params.get("__url_path")`.
+   - In standard form-url decoding, `+` is translated into `' '` (a space).
+   - Versioned assets referencing build metadata like `/admin/assets/1.0.0+d8c7dc72/admin.css` had their request paths mangled to `/admin/assets/1.0.0 d8c7dc72/admin.css`.
+   - FastAPI received `version = "1.0.0 d8c7dc72"`, which mismatched `package_version() = "1.0.0+d8c7dc72"` and raised HTTP 404, causing an unstyled page and broken scripts in production.
+
+#### Architectural Fixes Delivered
+1. **Verbatim Path Preservation in `api/index.py`:**
+   - Prioritized `x-matched-path` (Vercel's untransformed request path).
+   - Decoded `__url_path` from raw query strings using `urllib.parse.unquote`, which decodes `%2B` and `%20` without converting literal `+` into spaces.
+   - Cleanly preserved actual request query strings (e.g. `?tab=keys`).
+2. **Defensive Version Matching in `admin_routes.py`:**
+   - `admin_asset` matches literal `+`, percent-encoded `%2B`, and space-decoded variants while strictly enforcing exact version validation.
+   - Verified correct `Content-Type` headers (`text/css`, `text/javascript`, `image/svg+xml`, `image/png`).
+
+---
+
+### Issue 4: Recurring SSE Timeouts on `/admin/api/code/events`
+
+#### Root Causes Discovered
+1. **Unbounded SSE Stream on Ephemeral Serverless Architecture:**
+   - `GET /admin/api/code/events` kept an SSE connection open indefinitely waiting on `self._queue.get()`.
+   - On Vercel, serverless function executions terminate at 60 seconds (`maxDuration: 60`), producing 315 runtime timeout errors in 24 hours.
+   - Client disconnects triggered `source.onerror`, causing full-session hydration churn (`list()` and `detail()`) on every reconnect.
+   - Inactive browser tabs maintained permanent background subscriptions, causing continuous serverless invocations.
+
+#### Architectural Fixes Delivered
+1. **Event Ring Buffer & Cursor Replay (`session_events.py`):**
+   - Added an in-memory ring-buffer (`deque(maxlen=256)`) to `EventPublisher`.
+   - Implemented `events_since(cursor)` to replay missed events or signal `resync_required` on overflow.
+2. **Bounded Serverless Stream (`code_sessions_routes.py`):**
+   - Bounded cloud streaming duration to 20.0s (clean HTTP 200 completion before Vercel's 60s hard kill).
+   - When reconnecting with `Last-Event-ID` or `?cursor=`, replays only missed events and avoids re-emitting `feed.ready`, preventing repeated full-session hydration.
+   - Yields `: ping` comments every 5s and breaks immediately upon client disconnect.
+   - Added dedicated cursor-based polling endpoint: `GET /admin/api/code/events/poll`.
+3. **Smart Tab Lifecycle in Frontend (`code_sessions.js`):**
+   - Added `visibilitychange` listeners: immediately pauses feed (`pauseFeed()`) when tab is hidden (`document.hidden = true`), eliminating background serverless execution.
+   - Reconnects seamlessly with `Last-Event-ID` on tab focus without UI teardown.
+   - Cleanly closes feed during admin view navigation (`deactivate()`).
+
+---
+
+## 7. Supabase Security Advisor Hardening (28 Functions)
+- **Investigation:** Identified that in PostgreSQL, `SECURITY DEFINER` stored procedures automatically grant `EXECUTE` to `PUBLIC` (including `anon` and `authenticated`) by default.
+- **Migration Prepared:** Authored `migrations/20261123_harden_security_definer_grants.sql` to explicitly `REVOKE EXECUTE` on all 28 `fcc_*` functions from `PUBLIC, anon, authenticated` and `GRANT EXECUTE` to `service_role, postgres`.
+
+---
+
+## 8. Operational Checklist & Production Readout
+
+- [x] **Admin Dashboard Asset Loading Fixed:** `api/index.py` and `admin_routes.py` preserve `+` in URL paths and correctly serve versioned CSS, JS, SVG, and provider logos.
+- [x] **Vercel SSE Timeouts Eliminated:** Serverless SSE streams bounded to 20s, background tabs auto-paused, `Last-Event-ID` cursor replay enabled, eliminating 60s runtime timeouts.
+- [x] **Cursor Polling Endpoint Active:** `GET /admin/api/code/events/poll` available for short/cursor polling.
 - [x] **Vercel 60s Timeouts Eliminated:** Cloud timeouts automatically bounded to 45s; long-running tasks offloaded to durable background jobs; 30s timeout on git clone; sync commands capped to 25s.
 - [x] **Durable Background Job Architecture:** Immediate HTTP 202 task ID return, status polling, process cancellation, duplicate prevention, and Supabase `fcc_code_runs` persistence.
 - [x] **Web Login & Session Persistence Fixed:** Auto-unlock on lockout expiration, persistent cross-container session secret in `fcc_app_settings`, human-readable HTTP 423 / 503 / 401 error codes.
@@ -396,4 +451,4 @@ Full application regression suite: 11,519 passed, zero regressions.
 - [x] **Dedicated Supabase Database:** Configured under user account (`jaswant0707`) with all tables, RPC functions, and zero advisor warnings.
 - [x] **Zero Raw Key Exposure:** Frontend and API responses strictly return masked keys (`gsk_...`, `fcc_uk_...`).
 - [x] **Strict Dual-Boundary Isolation:** Admin master tokens cannot access proxy routes; Universal Keys cannot access admin routes.
-- [x] **Production Zero-Regression:** 11,589 tests passing locally; GitHub Actions CI 100% green; live production endpoints verified.
+- [x] **Production Zero-Regression:** 11,589+ tests passing locally; GitHub Actions CI 100% green; live production endpoints verified.

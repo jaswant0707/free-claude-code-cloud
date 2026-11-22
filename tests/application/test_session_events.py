@@ -72,3 +72,51 @@ async def test_publisher_close_releases_every_waiting_subscription() -> None:
         await asyncio.wait_for(anext(first), timeout=1)
     with pytest.raises(StopAsyncIteration):
         await asyncio.wait_for(anext(second), timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_publisher_events_since_and_history_ring_buffer() -> None:
+    publisher = EventPublisher()
+    p1 = publisher.publish("e1", {"num": 1})
+    p2 = publisher.publish("e2", {"num": 2})
+    p3 = publisher.publish("e3", {"num": 3})
+
+    # Exact cursor (up to date)
+    events, resync = publisher.events_since(3)
+    assert events == []
+    assert resync is False
+
+    # Past cursor replay
+    events, resync = publisher.events_since(1)
+    assert events == [p2, p3]
+    assert resync is False
+
+    events, resync = publisher.events_since(0)
+    assert events == [p1, p2, p3]
+    assert resync is False
+
+    # Future or invalid cursor requires resync
+    events, resync = publisher.events_since(99)
+    assert events == []
+    assert resync is True
+
+    events, resync = publisher.events_since(-1)
+    assert events == []
+    assert resync is True
+
+
+@pytest.mark.asyncio
+async def test_subscription_next_event_with_timeout() -> None:
+    publisher = EventPublisher()
+    sub = publisher.subscribe()
+
+    p1 = publisher.publish("e1", {"num": 1})
+    event = await sub.next_event()
+    assert event == p1
+
+    # Timeout waiting for next event
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(sub.next_event(), timeout=0.05)
+
+    await sub.aclose()
+    assert await sub.next_event() is None

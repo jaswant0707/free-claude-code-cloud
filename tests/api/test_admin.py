@@ -317,6 +317,51 @@ def test_admin_versioned_logo_reuses_packaged_app_icon(monkeypatch, tmp_path):
     assert response.content == asset_path.read_bytes()
 
 
+def test_admin_assets_support_plus_and_percent_encoding(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    test_version = "1.0.0+d8c7dc72"
+    monkeypatch.setattr("free_claude_code.api.admin_routes.package_version", lambda: test_version)
+
+    client = _local_client(create_test_app())
+
+    # 1. Literal '+' in path
+    resp_plus = client.get(f"/admin/assets/{test_version}/admin.css")
+    assert resp_plus.status_code == 200
+    assert resp_plus.headers["content-type"].startswith("text/css")
+    assert len(resp_plus.content) > 100
+
+    # 2. '%2B' encoded '+' in path
+    encoded_version = "1.0.0%2Bd8c7dc72"
+    resp_encoded = client.get(f"/admin/assets/{encoded_version}/admin.css")
+    assert resp_encoded.status_code == 200
+    assert resp_encoded.headers["content-type"].startswith("text/css")
+    assert resp_encoded.content == resp_plus.content
+
+    # 3. Space-decoded version ('1.0.0 d8c7dc72')
+    mangled_version = "1.0.0 d8c7dc72"
+    resp_mangled = client.get(f"/admin/assets/{mangled_version}/admin.css")
+    assert resp_mangled.status_code == 200
+    assert resp_mangled.headers["content-type"].startswith("text/css")
+
+    # 4. Provider logo SVG
+    resp_logo = client.get(f"/admin/assets/{test_version}/providers/anthropic.svg")
+    assert resp_logo.status_code == 200
+    assert resp_logo.headers["content-type"].startswith("image/svg+xml")
+
+    # 5. JavaScript asset
+    resp_js = client.get(f"/admin/assets/{test_version}/admin.js")
+    assert resp_js.status_code == 200
+    assert resp_js.headers["content-type"].startswith("text/javascript")
+
+    # 6. Wrong version returns 404
+    resp_wrong = client.get("/admin/assets/1.0.0+wrongversion/admin.css")
+    assert resp_wrong.status_code == 404
+
+    # 7. Non-existent filename returns 404
+    resp_missing = client.get(f"/admin/assets/{test_version}/missing_asset.css")
+    assert resp_missing.status_code == 404
+
+
 @pytest.mark.parametrize(
     "path",
     (

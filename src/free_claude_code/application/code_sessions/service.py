@@ -16,6 +16,7 @@ from free_claude_code.application.readiness import InitializationWait
 from free_claude_code.application.session_events import (
     EventPublisher,
     EventSubscription,
+    PublishedEvent,
 )
 from free_claude_code.core.json_types import JsonObject, JsonValue
 
@@ -341,6 +342,11 @@ class CodeService:
     @property
     def cursor(self) -> int:
         return self._events.cursor
+
+    def events_since(
+        self, cursor: int
+    ) -> tuple[Sequence[PublishedEvent], bool]:
+        return self._events.events_since(cursor)
 
     async def get_detail(
         self,

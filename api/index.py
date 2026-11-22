@@ -55,26 +55,38 @@ try:
 
     @app.middleware("http")
     async def _vercel_path_middleware(request: Request, call_next):
-        # Normalize rewritten paths from Vercel rewrites or headers
-        target_path = request.query_params.get("__url_path")
-        if not target_path:
-            for header in ("x-matched-path", "x-forwarded-uri", "x-invoke-path"):
-                val = request.headers.get(header)
-                if val and val not in ("/api/index.py", "/api/index", "/api", "/api/"):
-                    target_path = val
+        # Normalize rewritten paths from Vercel headers or rewrites
+        target_path = None
+        for header in ("x-matched-path", "x-forwarded-uri", "x-invoke-path"):
+            val = request.headers.get(header)
+            if val and val not in ("/api/index.py", "/api/index", "/api", "/api/"):
+                target_path = val
+                break
+
+        raw_qs = request.scope.get("query_string", b"").decode("utf-8", errors="replace")
+
+        if not target_path and "__url_path=" in raw_qs:
+            from urllib.parse import unquote
+            for part in raw_qs.split("&"):
+                if part.startswith("__url_path="):
+                    raw_val = part[len("__url_path="):]
+                    # unquote decodes %20, %2B, etc., while preserving literal '+'
+                    target_path = unquote(raw_val)
                     break
 
         if target_path:
-            clean_path = "/" + target_path.lstrip("/").split("?", 1)[0]
+            path_part, *qs_part = target_path.lstrip("/").split("?", 1)
+            clean_path = "/" + path_part
             request.scope["path"] = clean_path
             request.scope["raw_path"] = clean_path.encode("utf-8")
 
-            raw_qs = request.scope.get("query_string", b"").decode("utf-8", errors="replace")
             if "__url_path=" in raw_qs:
-                filtered_qs = "&".join(
+                filtered_parts = [
                     p for p in raw_qs.split("&") if not p.startswith("__url_path=") and p
-                )
-                request.scope["query_string"] = filtered_qs.encode("utf-8")
+                ]
+                if qs_part and qs_part[0]:
+                    filtered_parts.insert(0, qs_part[0])
+                request.scope["query_string"] = "&".join(filtered_parts).encode("utf-8")
 
             if hasattr(request, "_url"):
                 delattr(request, "_url")

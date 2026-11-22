@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol
 
-from free_claude_code.application.session_events import EventSubscription
+from free_claude_code.application.session_events import (
+    EventSubscription,
+    PublishedEvent,
+)
 from free_claude_code.core.json_types import JsonObject
 
 from .models import (
@@ -206,6 +209,13 @@ class CodeApplicationPort(Protocol):
     ) -> CodeDetail: ...
 
     async def subscribe(self) -> tuple[EventSubscription, JsonObject]: ...
+
+    @property
+    def cursor(self) -> int: ...
+
+    def events_since(
+        self, cursor: int
+    ) -> tuple[Sequence[PublishedEvent], bool]: ...
 
     async def update_settings(
         self, session_id: str, revision: int, changes: JsonObject

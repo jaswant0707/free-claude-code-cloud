@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from time import perf_counter
+from urllib.parse import unquote
 
 import httpx
 from fastapi import (
@@ -127,7 +128,12 @@ def admin_page(request: Request):
 @router.get("/admin/assets/{version}/{filename:path}", include_in_schema=False)
 async def admin_asset(version: str, filename: str, request: Request):
     require_loopback_admin(request)
-    if version != package_version() or filename not in _ADMIN_ASSET_FILENAMES:
+    target_ver = package_version()
+    if (
+        version != target_ver
+        and unquote(version) != target_ver
+        and version.replace(" ", "+") != target_ver
+    ) or filename not in _ADMIN_ASSET_FILENAMES:
         raise HTTPException(status_code=404, detail="Admin asset not found")
     return _asset_response(filename)
 

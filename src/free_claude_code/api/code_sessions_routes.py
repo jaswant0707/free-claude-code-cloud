@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -29,7 +30,11 @@ from free_claude_code.config.model_refs import split_provider_model_ref
 from free_claude_code.core.json_types import JsonObject, JsonValue
 
 from .admin_routes import admin_page_response
-from .admin_security import is_authorized_admin, require_loopback_admin
+from .admin_security import (
+    is_authorized_admin,
+    is_cloud_environment,
+    require_loopback_admin,
+)
 from .dependencies import get_services
 from .markdown import render_markdown
 from .ports import ApiServices
@@ -147,10 +152,112 @@ async def pick_folder(
 
 @router.get("/admin/api/code/events", response_class=EventSourceResponse)
 async def events(
+    request: Request,
+    cursor: str | None = Query(default=None),
+    timeout: float | None = Query(default=None),
     services: ApiServices = Depends(get_services),
 ) -> AsyncIterator[ServerSentEvent]:
-    subscription, ready = await _code(services).subscribe()
+    code = _code(services)
+    subscription, ready = await code.subscribe()
+
+    # Determine client cursor from Last-Event-ID header or query param
+    raw_cursor = request.headers.get("last-event-id") or cursor
+    client_cursor: int | None = None
+    if raw_cursor:
+        try:
+            client_cursor = int(raw_cursor)
+        except ValueError:
+            pass
+
     try:
+        # Reconnection branch vs Initial connection branch
+        if client_cursor is not None and hasattr(code, "events_since"):
+            missed_events, resync_required = code.events_since(client_cursor)
+            if resync_required:
+                yield ServerSentEvent(
+                    event="feed.resync_required",
+                    id=str(subscription.cursor),
+                    retry=1000,
+                    data={"cursor": subscription.cursor},
+                )
+            else:
+                for missed in missed_events:
+                    yield ServerSentEvent(
+                        event=missed.event,
+                        id=str(missed.id),
+                        retry=1000,
+                        data={**_event_payload(missed.data), "cursor": missed.id},
+                    )
+        else:
+            summaries = ready.get("sessions")
+            if isinstance(summaries, list):
+                ready = {
+                    **ready,
+                    "sessions": [
+                        _event_payload(value)
+                        for value in summaries
+                        if isinstance(value, Mapping)
+                    ],
+                }
+            yield ServerSentEvent(
+                event="feed.ready", id=str(subscription.cursor), retry=1000, data=ready
+            )
+
+        # Bounded streaming loop: in cloud environments (Vercel), default to 20s to
+        # prevent 60-second execution timeouts. Client will reconnect with Last-Event-ID.
+        is_cloud = is_cloud_environment()
+        if timeout is not None:
+            max_duration = min(float(timeout), 25.0) if is_cloud else float(timeout)
+        else:
+            max_duration = 20.0 if is_cloud else 1800.0
+
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            elapsed = loop.time() - start_time
+            if elapsed >= max_duration:
+                # Clean exit before serverless timeout
+                break
+
+            wait_slice = min(5.0, max(0.1, max_duration - elapsed))
+            try:
+                event = await asyncio.wait_for(subscription.next_event(), timeout=wait_slice)
+                if event is None:
+                    break
+                yield ServerSentEvent(
+                    event=event.event,
+                    id=str(event.id),
+                    retry=1000,
+                    data={**_event_payload(event.data), "cursor": event.id},
+                )
+            except asyncio.TimeoutError:
+                yield ServerSentEvent(comment="ping")
+    except EventOverflowError as exc:
+        yield ServerSentEvent(
+            event="feed.resync_required",
+            id=str(exc.cursor),
+            retry=1000,
+            data={"cursor": exc.cursor},
+        )
+    finally:
+        await subscription.aclose()
+
+
+@router.get("/admin/api/code/events/poll")
+async def poll_events(
+    request: Request,
+    cursor: int | None = Query(default=None),
+    timeout: float = Query(default=15.0, ge=0.0, le=25.0),
+    services: ApiServices = Depends(get_services),
+) -> JsonObject:
+    """Cursor-based event polling endpoint for serverless architectures."""
+    code = _code(services)
+    if cursor is None:
+        _, ready = await code.subscribe()
         summaries = ready.get("sessions")
         if isinstance(summaries, list):
             ready = {
@@ -161,24 +268,66 @@ async def events(
                     if isinstance(value, Mapping)
                 ],
             }
-        yield ServerSentEvent(
-            event="feed.ready", id=str(subscription.cursor), retry=1000, data=ready
-        )
-        try:
-            async for event in subscription:
-                yield ServerSentEvent(
-                    event=event.event,
-                    id=str(event.id),
-                    data={**_event_payload(event.data), "cursor": event.id},
-                )
-        except EventOverflowError as exc:
-            yield ServerSentEvent(
-                event="feed.resync_required",
-                id=str(exc.cursor),
-                data={"cursor": exc.cursor},
-            )
+        return {
+            "ready": True,
+            "epoch": getattr(code, "epoch", "default"),
+            "cursor": code.cursor,
+            "resync_required": False,
+            "events": [],
+            "data": ready,
+        }
+
+    if hasattr(code, "events_since"):
+        missed, resync = code.events_since(cursor)
+        if resync:
+            return {
+                "ready": False,
+                "cursor": code.cursor,
+                "resync_required": True,
+                "events": [],
+            }
+        if missed:
+            return {
+                "ready": False,
+                "cursor": code.cursor,
+                "resync_required": False,
+                "events": [
+                    {"event": e.event, "id": e.id, "data": _event_payload(e.data)}
+                    for e in missed
+                ],
+            }
+
+    if timeout <= 0:
+        return {
+            "ready": False,
+            "cursor": code.cursor,
+            "resync_required": False,
+            "events": [],
+        }
+
+    subscription, _ = await code.subscribe()
+    try:
+        event = await asyncio.wait_for(subscription.next_event(), timeout=timeout)
+        if event is not None:
+            return {
+                "ready": False,
+                "cursor": code.cursor,
+                "resync_required": False,
+                "events": [
+                    {"event": event.event, "id": event.id, "data": _event_payload(event.data)}
+                ],
+            }
+    except (asyncio.TimeoutError, EventOverflowError):
+        pass
     finally:
         await subscription.aclose()
+
+    return {
+        "ready": False,
+        "cursor": code.cursor,
+        "resync_required": False,
+        "events": [],
+    }
 
 
 @router.get("/admin/api/code/sessions")
