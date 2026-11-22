@@ -36,8 +36,13 @@ except Exception:
 if "PROXY_AUTH_ENABLED" not in os.environ:
     os.environ["PROXY_AUTH_ENABLED"] = "true"
 
-# Top-level FastAPI instance required by Vercel's build parser
-app = FastAPI(title="Free Claude Code Cloud")
+# Top-level FastAPI instance required by Vercel's build parser (docs disabled for security in cloud production)
+app = FastAPI(
+    title="Free Claude Code Cloud",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 try:
     from free_claude_code.config.loader import clear_settings_cache, get_settings

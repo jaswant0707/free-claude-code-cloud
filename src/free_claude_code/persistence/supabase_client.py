@@ -17,11 +17,11 @@ import httpx
 from .crypto import decrypt_secret, encrypt_secret, mask_secret
 
 # Default Supabase configuration for FCC Cloud
-_DEFAULT_SUPABASE_URL: Final[str] = "https://xagpsrrdlqmygtjqgylw.supabase.co"
+_DEFAULT_SUPABASE_URL: Final[str] = "https://emlenqcewhlwtnigwkac.supabase.co"
 _DEFAULT_ANON_KEY: Final[str] = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhhZ3BzcnJkbHFteWd0anFneWx3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3MTc1MzQsImV4cCI6MjExMDI5MzUzNH0."
-    "lGtIPKXd0nj0IyaIqkZ-U2JULLOep4EsHk-OZEG279Y"
+    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVtbGVucWNld2hsd3RuaWd3a2FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUzNTI4MjIsImV4cCI6MjExMDkyODgyMn0."
+    "qZz-V-6TpUrfrH9OTOA53GLWRekHgGIop1TcA3EOLz8"
 )
 
 

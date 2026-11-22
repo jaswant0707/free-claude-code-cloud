@@ -58,7 +58,15 @@ from .validation_log import summarize_request_validation_body
 def create_app(services: ApiServices, *, app: FastAPI | None = None) -> FastAPI:
     """Create the HTTP adapter around explicitly supplied runtime services."""
     if app is None:
-        app = FastAPI(title="Claude Code Proxy", version=package_version())
+        import os
+        is_cloud = os.getenv("FCC_CLOUD_DEPLOYMENT", "").lower() in ("1", "true", "yes") or bool(os.getenv("VERCEL"))
+        app = FastAPI(
+            title="Claude Code Proxy",
+            version=package_version(),
+            docs_url=None if is_cloud else "/docs",
+            redoc_url=None if is_cloud else "/redoc",
+            openapi_url=None if is_cloud else "/openapi.json",
+        )
     app.state.services = services
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(AdminNoStoreMiddleware)
