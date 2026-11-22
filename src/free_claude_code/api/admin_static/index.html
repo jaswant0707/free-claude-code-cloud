@@ -243,7 +243,109 @@
             <div class="uk-container">
               <div class="uk-hero">
                 <h3>Multi-Universal API Keys</h3>
-                <p>Generate, monitor, and revoke high-security API keys for Claude Code, Cline, Cursor, OpenCode, and remote agents. Supports per-key default model overrides, fallback chains, rate limiting, and automatic request tracking.</p>
+                <p>Connect any AI coding tool (Claude Code, Cursor, Cline, LibreChat, OpenAI SDK, Anthropic SDK) through high-performance Universal API Keys and unified model routing.</p>
+              </div>
+
+              <!-- Section A: Universal API Connection Details -->
+              <div class="uk-card uk-connection-card">
+                <h4 class="uk-card-title">Universal API Connection Details</h4>
+                <div class="uk-conn-grid">
+                  <div class="uk-conn-row">
+                    <label for="ukApiBaseUrl">API Base URL (OpenAI / Anthropic / Gemini Compatible)</label>
+                    <div class="uk-copy-group">
+                      <code id="ukApiBaseUrl">https://free-claude-code-cloud.vercel.app/v1</code>
+                      <button id="ukCopyBaseUrlBtn" class="primary-button" type="button" style="padding:6px 14px; font-size:0.82rem;">Copy URL</button>
+                    </div>
+                  </div>
+
+                  <div class="uk-conn-badges">
+                    <div class="uk-badge-item">
+                      <strong>Authorization Header:</strong>
+                      <code>Authorization: Bearer fcc_uk_...</code>
+                    </div>
+                    <div class="uk-badge-item">
+                      <strong>Anthropic / Claude Code:</strong>
+                      <code>x-api-key: fcc_uk_...</code>
+                    </div>
+                  </div>
+
+                  <div class="uk-conn-row">
+                    <label>Supported Client Endpoints</label>
+                    <table class="uk-endpoints-table">
+                      <thead>
+                        <tr>
+                          <th>Format</th>
+                          <th>Method &amp; Path</th>
+                          <th>Compatible Clients</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td><strong>OpenAI Chat</strong></td>
+                          <td><code>POST /v1/chat/completions</code></td>
+                          <td>Cursor, Cline, LibreChat, OpenWebUI, OpenAI Python/TS SDK</td>
+                        </tr>
+                        <tr>
+                          <td><strong>Anthropic Messages</strong></td>
+                          <td><code>POST /v1/messages</code></td>
+                          <td>Claude Code CLI, Anthropic Python/TS SDK</td>
+                        </tr>
+                        <tr>
+                          <td><strong>Google Gemini</strong></td>
+                          <td><code>POST /v1beta/models/{model}:generateContent</code></td>
+                          <td>Gemini SDK, Aider</td>
+                        </tr>
+                        <tr>
+                          <td><strong>OpenAI Responses</strong></td>
+                          <td><code>POST /v1/responses</code></td>
+                          <td>Muse Code, OpenAI Codex CLI</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div class="uk-conn-row">
+                    <label>Quick Test Command (cURL)</label>
+                    <div class="uk-curl-box">
+                      <button id="ukCopyCurlBtn" class="secondary-button uk-curl-copy-btn" type="button">Copy cURL</button>
+                      <pre><code id="ukCurlSnippet">curl -X POST https://free-claude-code-cloud.vercel.app/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_UNIVERSAL_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "free-claude-universal", "messages": [{"role": "user", "content": "Hello!"}]}'</code></pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section B: Universal Default Model -->
+              <div class="uk-card uk-universal-model-card">
+                <h4 class="uk-card-title">Universal Default Model</h4>
+                <p style="color:var(--muted); font-size:0.85rem; margin:-8px 0 16px;">
+                  Application-owned virtual model identifier. Use <code>free-claude-universal</code> in your client configurations. Free Claude Code Cloud will route requests to the upstream provider configured below and preserve the identifier in responses.
+                </p>
+                <div class="uk-form-grid" style="align-items:flex-end;">
+                  <div class="uk-form-field">
+                    <label for="ukModelAliasInput">Universal Model Identifier (Alias) *</label>
+                    <div style="display:flex; gap:6px;">
+                      <input id="ukModelAliasInput" class="uk-input" type="text" value="free-claude-universal" required autocomplete="off" data-1p-ignore="" data-bwignore="" data-form-type="other" style="flex:1;" />
+                      <button id="ukCopyModelAliasBtn" class="secondary-button" type="button" style="padding:6px 12px; font-size:0.82rem;" title="Copy Model ID">Copy</button>
+                    </div>
+                  </div>
+                  <div class="uk-form-field">
+                    <label for="ukModelTargetSelect">Upstream Target Model</label>
+                    <select id="ukModelTargetSelect" class="uk-input">
+                      <option value="auto">auto (Smart Fallback Router)</option>
+                    </select>
+                  </div>
+                  <div class="uk-form-field" style="display:flex; flex-direction:row; gap:8px;">
+                    <button id="ukSaveModelBtn" class="primary-button" type="button" style="height:38px;">Save Model Settings</button>
+                    <button id="ukResetModelBtn" class="ghost-button" type="button" style="height:38px;">Reset Default</button>
+                  </div>
+                </div>
+                <div class="uk-model-status">
+                  <span>Active Route:</span>
+                  <code id="ukModelStatusText">free-claude-universal &rarr; auto (Smart Fallback Router)</code>
+                </div>
               </div>
 
               <!-- One-time secret display banner -->
@@ -260,7 +362,7 @@
                 </div>
               </div>
 
-              <!-- Generate key form -->
+              <!-- Section C: Generate key form -->
               <div class="uk-card">
                 <h4 class="uk-card-title">Generate New Universal Key</h4>
                 <form id="ukCreateForm" class="uk-form-grid" autocomplete="off" data-1p-ignore="" data-bwignore="" data-form-type="other">
@@ -284,7 +386,7 @@
                 </form>
               </div>
 
-              <!-- Active keys table -->
+              <!-- Section D: Active keys table -->
               <div class="uk-table-wrapper">
                 <table class="uk-table">
                   <thead>

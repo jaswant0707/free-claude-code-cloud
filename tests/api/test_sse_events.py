@@ -36,12 +36,16 @@ class _MockCodeSessions:
 
 
 @pytest.fixture
-def mock_app():
+def mock_app(monkeypatch):
+    monkeypatch.setenv("ADMIN_AUTH_TOKEN", "test-admin-token")
+    from free_claude_code.config.loader import clear_settings_cache
+    clear_settings_cache()
     from tests.api.support import create_test_app
 
     code = _MockCodeSessions()
     app = create_test_app(code=code)
-    return app, code
+    yield app, code
+    clear_settings_cache()
 
 
 @pytest.mark.asyncio

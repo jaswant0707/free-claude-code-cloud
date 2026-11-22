@@ -1,8 +1,25 @@
 """Tests for Vercel path rewrite middleware in api/index.py."""
 
+import os
 import pytest
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
+
+
+@pytest.fixture(autouse=True)
+def clean_vercel_env():
+    """Ensure api/index.py import does not pollute subsequent tests with FCC_CLOUD_DEPLOYMENT."""
+    old_cloud = os.environ.get("FCC_CLOUD_DEPLOYMENT")
+    old_proxy = os.environ.get("PROXY_AUTH_ENABLED")
+    yield
+    if old_cloud is None:
+        os.environ.pop("FCC_CLOUD_DEPLOYMENT", None)
+    else:
+        os.environ["FCC_CLOUD_DEPLOYMENT"] = old_cloud
+    if old_proxy is None:
+        os.environ.pop("PROXY_AUTH_ENABLED", None)
+    else:
+        os.environ["PROXY_AUTH_ENABLED"] = old_proxy
 
 
 @pytest.mark.asyncio

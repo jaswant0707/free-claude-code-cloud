@@ -253,3 +253,151 @@ def test_admin_universal_keys_crud(uk_app):
         )
         assert res_del.status_code == 200
         assert res_del.json()["status"] == "deleted"
+
+
+def test_admin_universal_keys_create_with_expires_in_days(uk_app):
+    """Universal Key creation accepts expires_in_days and returns full record."""
+    client = TestClient(uk_app, base_url="https://cloud.example.com")
+    admin_headers = {"x-admin-token": ADMIN_TOKEN}
+
+    mock_client = MagicMock()
+    mock_client.is_configured = True
+    mock_client.create_universal_key.return_value = {
+        "id": "uk-3",
+        "name": "Cursor Key",
+        "key_prefix": "fcc_uk_99999999",
+        "is_active": True,
+        "default_model": "claude-3-5-sonnet",
+    }
+
+    with patch("free_claude_code.api.universal_keys_routes.get_supabase_client", return_value=mock_client), \
+         patch("free_claude_code.persistence.universal_keys.get_supabase_client", return_value=mock_client):
+
+        res = client.post(
+            "/admin/api/universal-keys",
+            headers=admin_headers,
+            json={
+                "name": "Cursor Key",
+                "default_model": "claude-3-5-sonnet",
+                "rate_limit_rpm": 100,
+                "expires_in_days": 30,
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "created"
+        assert data["raw_key"].startswith("fcc_uk_")
+        assert data["key"]["name"] == "Cursor Key"
+        assert data["record"]["name"] == "Cursor Key"
+        assert mock_client.create_universal_key.called
+        # Verify expires_at timestamp was passed to supabase
+        call_kwargs = mock_client.create_universal_key.call_args[1]
+        assert call_kwargs["expires_at"] is not None
+        assert "T" in call_kwargs["expires_at"]
+
+
+def test_universal_model_endpoints(uk_app):
+    """Admin can get and update the universal model configuration."""
+    client = TestClient(uk_app, base_url="https://cloud.example.com")
+    admin_headers = {"x-admin-token": ADMIN_TOKEN}
+
+    mock_client = MagicMock()
+    mock_client.is_configured = True
+    mock_client.get_app_settings.return_value = {
+        "fcc_universal_model_alias": "free-claude-universal",
+        "fcc_universal_model_target": "groq/llama-3.3-70b-versatile",
+    }
+    mock_client.list_provider_configs.return_value = [
+        {"provider_id": "groq", "provider_name": "Groq Cloud", "default_model": "llama-3.3-70b-versatile"}
+    ]
+
+    with patch("free_claude_code.api.universal_keys_routes.get_supabase_client", return_value=mock_client), \
+         patch("free_claude_code.persistence.universal_model.get_supabase_client", return_value=mock_client):
+
+        # 1. GET universal model
+        res_get = client.get("/admin/api/universal-model", headers=admin_headers)
+        assert res_get.status_code == 200
+        data = res_get.json()
+        assert data["status"] == "ok"
+        assert data["alias"] == "free-claude-universal"
+        assert len(data["available_models"]) >= 1
+
+        # 2. POST update with invalid alias
+        res_bad = client.post(
+            "/admin/api/universal-model",
+            headers=admin_headers,
+            json={"alias": "invalid alias with spaces!"},
+        )
+        assert res_bad.status_code == 400
+
+        # 3. POST update with valid alias and target
+        res_post = client.post(
+            "/admin/api/universal-model",
+            headers=admin_headers,
+            json={
+                "alias": "custom-universal-id",
+                "target_model": "groq/llama-3.3-70b-versatile",
+            },
+        )
+        assert res_post.status_code == 200
+        post_data = res_post.json()
+        assert post_data["alias"] == "custom-universal-id"
+        assert post_data["target_model"] == "groq/llama-3.3-70b-versatile"
+
+
+def test_universal_model_precedence_rules():
+    """Verify exact 4-tier model resolution precedence."""
+    from free_claude_code.persistence.universal_model import (
+        resolve_incoming_model_request,
+        set_universal_model_config,
+        invalidate_universal_model_cache,
+    )
+
+    mock_client = MagicMock()
+    mock_client.is_configured = False
+
+    with patch("free_claude_code.persistence.universal_model.get_supabase_client", return_value=mock_client):
+        invalidate_universal_model_cache()
+        set_universal_model_config(
+            alias="free-claude-universal",
+            target_model="groq/llama-3.3-70b-versatile",
+        )
+
+        # 1. Explicit supported provider model in request wins
+        m1 = resolve_incoming_model_request(
+            "nim/meta/llama-3.3-70b-instruct",
+            key_default_model="claude-3-7-sonnet",
+        )
+        assert m1 == "nim/meta/llama-3.3-70b-instruct"
+
+        # 2. Request using universal alias with key default override -> key default wins
+        m2 = resolve_incoming_model_request(
+            "free-claude-universal",
+            key_default_model="claude-3-5-sonnet",
+        )
+        assert m2 == "claude-3-5-sonnet"
+
+        # 3. Request using universal alias with NO key override -> global universal target wins
+        m3 = resolve_incoming_model_request(
+            "free-claude-universal",
+            key_default_model=None,
+        )
+        assert m3 == "groq/llama-3.3-70b-versatile"
+
+        # 4. Request with empty/auto model and no key override -> global universal target wins
+        m4 = resolve_incoming_model_request(
+            "auto",
+            key_default_model=None,
+        )
+        assert m4 == "groq/llama-3.3-70b-versatile"
+
+
+def test_models_list_advertises_universal_model(uk_app):
+    """GET /v1/models advertises the universal model alias."""
+    client = TestClient(uk_app, base_url="https://cloud.example.com")
+    res = client.get("/v1/models", headers={"Authorization": f"Bearer {API_TOKEN}"})
+    assert res.status_code == 200
+    model_ids = [m["id"] for m in res.json()["data"]]
+    assert "free-claude-universal" in model_ids
+
+

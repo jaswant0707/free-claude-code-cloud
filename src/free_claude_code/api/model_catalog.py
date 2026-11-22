@@ -177,6 +177,19 @@ def _build_claude_models_response(
 ) -> ModelsListResponse:
     """Keep shortcuts first and provider variants together in catalog order."""
     models = list(SUPPORTED_CLAUDE_MODELS)
+    try:
+        from free_claude_code.persistence.universal_model import (
+            DEFAULT_UNIVERSAL_MODEL_ALIAS,
+            get_universal_model_config,
+        )
+        u_cfg = get_universal_model_config()
+        u_alias = u_cfg.get("alias", "") or DEFAULT_UNIVERSAL_MODEL_ALIAS
+        models.insert(0, _discovered_model_response(
+            u_alias,
+            display_name=f"Free Claude Universal ({u_alias})",
+        ))
+    except Exception:
+        pass
     for model in catalog.models:
         ref = model.provider_model_ref
         native = supports_native_messages(ref.partition("/")[0])
@@ -213,6 +226,23 @@ def _build_direct_models_response(
     view: ModelCatalogView,
 ) -> ModelsListResponse:
     models: list[ModelResponse] = []
+    try:
+        from free_claude_code.persistence.universal_model import (
+            DEFAULT_UNIVERSAL_MODEL_ALIAS,
+            get_universal_model_config,
+        )
+        u_cfg = get_universal_model_config()
+        u_alias = u_cfg.get("alias", "") or DEFAULT_UNIVERSAL_MODEL_ALIAS
+        models.append(ModelResponse(
+            id=u_alias,
+            display_name=f"Free Claude Universal ({u_alias})",
+            created_at=DISCOVERED_MODEL_CREATED_AT,
+            provider_model_ref=u_alias,
+            context_window_tokens=200000,
+            max_output_tokens=8192,
+        ))
+    except Exception:
+        pass
     timeout_seconds = (
         _INFERENCE_IDLE_TIMEOUT_SECONDS if view is ModelCatalogView.RESPONSES else None
     )

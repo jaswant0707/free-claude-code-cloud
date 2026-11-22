@@ -218,6 +218,11 @@ def admin_base_url(
     for key in recognized_env_keys():
         monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("FCC_ENV_FILE", raising=False)
+    monkeypatch.delenv("FCC_CLOUD_DEPLOYMENT", raising=False)
+    monkeypatch.delenv("ADMIN_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("FCC_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("OWNER_EMAIL", raising=False)
+    monkeypatch.delenv("OWNER_PASSWORD", raising=False)
     monkeypatch.setenv("MODEL", "open_router/e2e-default")
     monkeypatch.setenv("OPENROUTER_API_KEY", "e2e-openrouter-key")
     monkeypatch.setenv("GROQ_API_KEY", "e2e-groq-key")

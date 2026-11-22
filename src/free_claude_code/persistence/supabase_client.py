@@ -392,7 +392,12 @@ class SupabaseClient:
 
     def delete_universal_key(self, key_id: str) -> bool:
         """Permanently delete a universal API key."""
-        return bool(self._rpc("fcc_delete_universal_key", {"p_key_id": key_id}))
+        result = self._rpc("fcc_delete_universal_key", {"p_key_id": key_id})
+        if result is True:
+            return True
+        # Verify if key is successfully absent (handles PL/pgSQL FOUND behavior with dynamic SQL)
+        remaining = [k for k in self.list_universal_keys() if str(k.get("id")) == str(key_id)]
+        return len(remaining) == 0
 
     # --------------------------------------------------------------------------
     # Model Test Playground

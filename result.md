@@ -452,3 +452,49 @@ Full application regression suite: 11,519 passed, zero regressions.
 - [x] **Zero Raw Key Exposure:** Frontend and API responses strictly return masked keys (`gsk_...`, `fcc_uk_...`).
 - [x] **Strict Dual-Boundary Isolation:** Admin master tokens cannot access proxy routes; Universal Keys cannot access admin routes.
 - [x] **Production Zero-Regression:** 11,589+ tests passing locally; GitHub Actions CI 100% green; live production endpoints verified.
+
+---
+
+### Issue 5: Universal API Key Generation Failure & Usability Enhancements
+
+#### Root Causes Discovered
+1. **Supabase Stored Procedure Execution Permissions (`42501`):**
+   - When calling `fcc_create_universal_key`, `fcc_list_universal_keys`, `fcc_toggle_universal_key`, and `fcc_delete_universal_key`, PostgREST returned HTTP 401 (`permission denied for function fcc_...`) to the anon role. The backend returned `record: None`, causing `universal_keys.js` (`showBanner(res.raw_key, res.key.name)`) to crash with:
+     `TypeError: Cannot read properties of null (reading 'name')`.
+   - Granted `EXECUTE` on the `fcc_*` universal key functions to `anon` in Supabase. Backend security is strictly enforced by `fcc_verify_backend_caller()`, requiring the valid `x-fcc-server-token`.
+2. **Payload Schema Discrepancy (`expires_in_days` vs `expires_at`):**
+   - The UI sent `expires_in_days`, whereas `CreateUniversalKeyPayload` previously only accepted `expires_at`.
+   - Updated backend payload schema to accept `expires_in_days`, converting it into an ISO 8601 UTC timestamp. Added defensive HTTP 500 raising if database persistence fails.
+3. **Frontend Null Handling:**
+   - Updated `universal_keys.js` to safely resolve key records from `res.key || res.record || {}` and fallback to `payload.name`.
+
+#### Architectural Features Delivered
+1. **Section A — Universal API Connection Details:**
+   - Prominently displays the production API Base URL (`https://free-claude-code-cloud.vercel.app/v1`).
+   - One-click copy buttons with animated "Copied!" visual feedback.
+   - Headers cheat-sheet detailing `Authorization: Bearer <key>` and `x-api-key: <key>`.
+   - Supported endpoints table (`/v1/chat/completions`, `/v1/messages`, `/v1beta/models/...`, `/v1/responses`).
+   - Copyable cURL quick-start snippet for immediate client testing.
+2. **Section B — Universal Default Model (`free-claude-universal`):**
+   - Application-owned virtual model alias decoupled from individual provider models.
+   - Dynamic configuration in Admin UI allowing the owner to customize the alias and map it to an upstream target provider model or `auto` fallback chain.
+   - Persisted in Supabase `fcc_app_settings` with 15-second TTL in-memory caching.
+   - Advertised in `GET /v1/models` in both Claude and direct views.
+   - Strict 4-tier model resolution precedence implemented:
+     1. Explicit supported provider/model in request.
+     2. Per-key default model override.
+     3. Global Universal Default Model configuration.
+     4. Existing fallback routing engine.
+3. **Section C & D — Key Generation & Existing Keys UX:**
+   - Key creation with instant one-time secret key banner, copy button, and dismissal.
+   - Comprehensive key table showing key prefix, model routing, usage counts, last used date, status toggle, and deletion.
+
+---
+
+## 9. Comprehensive Verification Checklist
+
+- [x] **Import Boundaries:** `tests/contracts/test_import_boundaries.py` 100% compliant (Clean Architecture preserved; `application` layer remains pure and does not import `persistence`).
+- [x] **Universal Keys Backend Tests:** `tests/api/test_universal_keys.py` 100% passing (11 unit/integration tests).
+- [x] **SSE & Vercel Routing Tests:** `tests/api/test_sse_events.py` and `tests/api/test_vercel_routing.py` 100% passing.
+- [x] **Playwright E2E UI Tests:** `e2e/test_universal_keys_ui.py` 100% passing (Dashboard rendering + browser key creation and deletion).
+

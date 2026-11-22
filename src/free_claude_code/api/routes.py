@@ -56,6 +56,7 @@ from .ports import ApiServices
 from .request_errors import ordinary_application_error_response
 from .request_ids import get_request_id
 from .response_streams import bind_response_lifetime
+from free_claude_code.persistence.universal_model import resolve_incoming_model_request
 
 router = APIRouter()
 
@@ -91,8 +92,8 @@ async def create_gemini_response(
     ):
         raise HTTPException(status_code=400, detail="Invalid model resource")
     uk_info = getattr(request.state, "universal_key", None)
-    if model == "auto" and uk_info and uk_info.get("default_model"):
-        model = uk_info["default_model"]
+    key_def_model = uk_info.get("default_model") if uk_info else None
+    model = resolve_incoming_model_request(model, key_default_model=key_def_model)
     streaming = action == "streamGenerateContent"
     alt = request.query_params.getlist("alt")
     if (
@@ -150,8 +151,12 @@ async def create_chat_completion(
     _auth=Depends(require_proxy_auth),
 ):
     uk_info = getattr(request.state, "universal_key", None)
-    if (not request_data.model or request_data.model == "auto") and uk_info and uk_info.get("default_model"):
-        request_data = request_data.model_copy(update={"model": uk_info["default_model"]})
+    key_def_model = uk_info.get("default_model") if uk_info else None
+    resolved_model = resolve_incoming_model_request(
+        request_data.model, key_default_model=key_def_model
+    )
+    if resolved_model != request_data.model:
+        request_data = request_data.model_copy(update={"model": resolved_model})
     lease = await services.requests.acquire()
     try:
         await lease.wait_for_token_estimation()
@@ -300,10 +305,14 @@ async def create_message(
 ):
     """Create a message (JSON by default; stream=true returns Anthropic SSE)."""
     uk_info = getattr(request.state, "universal_key", None)
+    key_def_model = uk_info.get("default_model") if uk_info else None
     if isinstance(request_data, dict):
         model = request_data.get("model")
-        if (not model or model == "auto") and uk_info and uk_info.get("default_model"):
-            request_data["model"] = uk_info["default_model"]
+        resolved_model = resolve_incoming_model_request(
+            model, key_default_model=key_def_model
+        )
+        if resolved_model != model:
+            request_data["model"] = resolved_model
     return await _create_messages_response(
         services,
         cast(JsonObject, request_data),
@@ -326,8 +335,12 @@ async def create_response(
 ):
     """Create an OpenAI Responses-compatible response through this proxy."""
     uk_info = getattr(request.state, "universal_key", None)
-    if (not request_data.model or request_data.model == "auto") and uk_info and uk_info.get("default_model"):
-        request_data = request_data.model_copy(update={"model": uk_info["default_model"]})
+    key_def_model = uk_info.get("default_model") if uk_info else None
+    resolved_model = resolve_incoming_model_request(
+        request_data.model, key_default_model=key_def_model
+    )
+    if resolved_model != request_data.model:
+        request_data = request_data.model_copy(update={"model": resolved_model})
     return await _create_responses_response(
         services,
         request_data,
