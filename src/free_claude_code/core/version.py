@@ -2,16 +2,39 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as distribution_version
 
 _DISTRIBUTION_NAME = "free-claude-code"
-_UNKNOWN_VERSION = "0+unknown"
+_BASE_VERSION = "1.0.0"
 
 
 def package_version() -> str:
-    """Return installed metadata, or an explicit source-only fallback."""
+    """Return installed metadata, git commit version, or explicit release version."""
     try:
-        return distribution_version(_DISTRIBUTION_NAME)
+        ver = distribution_version(_DISTRIBUTION_NAME)
+        if ver and ver != "0+unknown":
+            return ver
     except PackageNotFoundError:
-        return _UNKNOWN_VERSION
+        pass
+
+    # Check Vercel / environment git commit SHA
+    commit_sha = os.getenv("VERCEL_GIT_COMMIT_SHA") or os.getenv("GIT_COMMIT_SHA")
+    if commit_sha:
+        return f"{_BASE_VERSION}+{commit_sha[:8]}"
+
+    # Try local git
+    try:
+        short_sha = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            timeout=1.0,
+        ).decode("utf-8").strip()
+        if short_sha:
+            return f"{_BASE_VERSION}+{short_sha}"
+    except Exception:
+        pass
+
+    return f"{_BASE_VERSION}+cloud"

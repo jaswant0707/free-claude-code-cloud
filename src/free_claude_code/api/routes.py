@@ -384,19 +384,21 @@ async def root(
     settings: Settings = Depends(get_settings),
 ):
     accept = request.headers.get("accept", "")
-    if "text/html" in accept and not accept.startswith("*/*"):
-        from .owner_auth import is_authenticated_owner
+    # Programmatic API callers explicitly requesting JSON
+    if "application/json" in accept and "text/html" not in accept:
+        require_proxy_auth(request, settings)
+        return {
+            "status": "ok",
+            "provider": parse_provider_type(settings.model),
+            "model": settings.model,
+        }
 
-        if is_authenticated_owner(request):
-            return RedirectResponse(url="/admin", status_code=303)
-        return RedirectResponse(url="/login", status_code=303)
+    # Browser navigation and human visitors: redirect to admin if authenticated, or login
+    from .owner_auth import is_authenticated_owner
 
-    require_proxy_auth(request, settings)
-    return {
-        "status": "ok",
-        "provider": parse_provider_type(settings.model),
-        "model": settings.model,
-    }
+    if is_authenticated_owner(request):
+        return RedirectResponse(url="/admin", status_code=303)
+    return RedirectResponse(url="/login", status_code=303)
 
 
 @router.api_route("/", methods=["HEAD", "OPTIONS"])
