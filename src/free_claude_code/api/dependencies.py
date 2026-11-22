@@ -68,12 +68,12 @@ def require_proxy_auth(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> None:
-    """Require the configured proxy token as HTTP bearer authorization."""
+    """Require the configured proxy token or active universal key as HTTP authorization."""
     if not is_proxy_auth_required(settings):
         return
 
     authorization = request.headers.get("authorization")
-    if not authorization:
+    if authorization is None:
         raise HTTPException(
             status_code=401,
             detail="Missing proxy authentication token",
@@ -83,6 +83,7 @@ def require_proxy_auth(
         authorization,
         settings.proxy_auth_token,
         require_bearer=True,
+        request=request,
     ):
         raise HTTPException(
             status_code=401,
@@ -104,6 +105,7 @@ def require_anthropic_proxy_auth(
             authorization,
             settings.proxy_auth_token,
             require_bearer=True,
+            request=request,
         ):
             return
         raise HTTPException(
@@ -122,6 +124,7 @@ def require_anthropic_proxy_auth(
         x_api_key,
         settings.proxy_auth_token,
         require_bearer=False,
+        request=request,
     ):
         raise HTTPException(
             status_code=401,
@@ -151,7 +154,7 @@ def require_gemini_proxy_auth(
             status_code=401, detail="Missing proxy authentication token"
         )
     if not _proxy_token_matches(
-        credential, settings.proxy_auth_token, require_bearer=bearer
+        credential, settings.proxy_auth_token, require_bearer=bearer, request=request
     ):
         raise HTTPException(
             status_code=401, detail="Invalid proxy authentication token"
@@ -163,6 +166,7 @@ def _proxy_token_matches(
     configured_token: str,
     *,
     require_bearer: bool,
+    request: Request | None = None,
 ) -> bool:
     token = credential.strip()
     if require_bearer:
@@ -179,6 +183,20 @@ def _proxy_token_matches(
     # Admin tokens are strictly disallowed from authenticating as proxy tokens
     if is_valid_admin_token(token):
         return False
+
+    # Check active Universal Key
+    if token.startswith("fcc_uk_"):
+        try:
+            from free_claude_code.persistence.universal_keys import verify_universal_key
+
+            key_info = verify_universal_key(token)
+            if key_info is not None:
+                if request is not None:
+                    request.state.universal_key = key_info
+                return True
+            return False
+        except Exception:
+            return False
 
     is_cloud = is_cloud_environment()
     valid_tokens: list[str] = []

@@ -83,7 +83,7 @@ def _is_proxy_token(token: str) -> bool:
 
 def is_valid_admin_token(token: str) -> bool:
     """Verify if token is a valid master/admin token."""
-    if not token or _is_proxy_token(token):
+    if not token or _is_proxy_token(token) or token.startswith("fcc_uk_"):
         return False
 
     # Check configured admin tokens

@@ -285,6 +285,104 @@ class SupabaseClient:
         }
         return self._rpc("fcc_record_audit_event", payload)
 
+    # --------------------------------------------------------------------------
+    # Universal API Keys
+    # --------------------------------------------------------------------------
+
+    def create_universal_key(
+        self,
+        name: str,
+        key_prefix: str,
+        key_hash: str,
+        default_model: str | None = None,
+        fallback_models: list[str] | None = None,
+        rate_limit_rpm: int = 60,
+        expires_at: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Create a new universal API key record."""
+        payload = {
+            "p_name": name,
+            "p_key_prefix": key_prefix,
+            "p_key_hash": key_hash,
+            "p_default_model": default_model,
+            "p_fallback_models": fallback_models or [],
+            "p_rate_limit_rpm": rate_limit_rpm,
+            "p_expires_at": expires_at,
+        }
+        return self._rpc("fcc_create_universal_key", payload)
+
+    def list_universal_keys(self) -> list[dict[str, Any]]:
+        """List all universal API keys."""
+        return self._rpc("fcc_list_universal_keys", {}) or []
+
+    def verify_universal_key(self, key_hash: str) -> dict[str, Any] | None:
+        """Atomically verify a universal key hash and increment usage."""
+        return self._rpc("fcc_verify_universal_key", {"p_key_hash": key_hash})
+
+    def toggle_universal_key(self, key_id: str, is_active: bool) -> bool:
+        """Toggle active/revoked status of a universal API key."""
+        return bool(self._rpc("fcc_toggle_universal_key", {"p_key_id": key_id, "p_is_active": is_active}))
+
+    def delete_universal_key(self, key_id: str) -> bool:
+        """Permanently delete a universal API key."""
+        return bool(self._rpc("fcc_delete_universal_key", {"p_key_id": key_id}))
+
+    # --------------------------------------------------------------------------
+    # Model Test Playground
+    # --------------------------------------------------------------------------
+
+    def upsert_model_test_session(
+        self,
+        session_id: str,
+        title: str,
+        selected_model: str = "auto",
+        provider_hint: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Create or update a model test playground session."""
+        payload = {
+            "p_id": session_id,
+            "p_title": title,
+            "p_selected_model": selected_model,
+            "p_provider_hint": provider_hint,
+        }
+        return self._rpc("fcc_upsert_model_test_session", payload)
+
+    def list_model_test_sessions(self) -> list[dict[str, Any]]:
+        """List all model test playground sessions."""
+        return self._rpc("fcc_list_model_test_sessions", {}) or []
+
+    def get_model_test_session(self, session_id: str) -> dict[str, Any] | None:
+        """Fetch a model test session with all historical messages."""
+        return self._rpc("fcc_get_model_test_session", {"p_id": session_id})
+
+    def delete_model_test_session(self, session_id: str) -> bool:
+        """Delete a model test playground session and its messages."""
+        return bool(self._rpc("fcc_delete_model_test_session", {"p_id": session_id}))
+
+    def add_model_test_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        resolved_provider: str | None = None,
+        resolved_model: str | None = None,
+        latency_ms: int | None = None,
+        tokens_used: int | None = None,
+        error_detail: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Record a chat message in a model test playground session."""
+        payload = {
+            "p_session_id": session_id,
+            "p_role": role,
+            "p_content": content,
+            "p_resolved_provider": resolved_provider,
+            "p_resolved_model": resolved_model,
+            "p_latency_ms": latency_ms,
+            "p_tokens_used": tokens_used,
+            "p_error_detail": error_detail,
+        }
+        return self._rpc("fcc_add_model_test_message", payload)
+
 
 # Singleton instance
 _supabase_instance: SupabaseClient | None = None

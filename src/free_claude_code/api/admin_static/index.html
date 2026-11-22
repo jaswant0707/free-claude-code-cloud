@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/admin/assets/__FCC_VERSION__/admin.css" />
     <link rel="stylesheet" href="/admin/assets/__FCC_VERSION__/code_sessions.css" />
     <link rel="stylesheet" href="/admin/assets/__FCC_VERSION__/session_layout.css" />
+    <link rel="stylesheet" href="/admin/assets/__FCC_VERSION__/playground.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -237,6 +238,128 @@
           <section id="view-code" class="admin-view" data-view="code" hidden>
             <div id="codeRoot" class="code-root session-root" aria-live="off"></div>
           </section>
+
+          <section id="view-universal_keys" class="admin-view" data-view="universal_keys" hidden>
+            <div class="uk-container">
+              <div class="uk-hero">
+                <h3>Multi-Universal API Keys</h3>
+                <p>Generate, monitor, and revoke high-security API keys for Claude Code, Cline, Cursor, OpenCode, and remote agents. Supports per-key default model overrides, fallback chains, rate limiting, and automatic request tracking.</p>
+              </div>
+
+              <!-- One-time secret display banner -->
+              <div id="ukBannerSecret" class="uk-banner-secret" hidden>
+                <h4>
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  New Universal API Key Created for "<span id="ukSecretKeyName"></span>"
+                </h4>
+                <p><strong>Copy this key now.</strong> For maximum cryptographic security, this raw secret token is hashed with SHA-256 and will never be shown again.</p>
+                <div class="uk-key-display">
+                  <code id="ukSecretKeyValue"></code>
+                  <button id="ukCopyBtn" class="primary-button" type="button" style="padding:6px 14px; font-size:0.85rem;">Copy Key</button>
+                  <button id="ukDismissBannerBtn" class="ghost-button" type="button" style="padding:6px 10px; font-size:0.85rem;">Dismiss</button>
+                </div>
+              </div>
+
+              <!-- Generate key form -->
+              <div class="uk-card">
+                <h4 class="uk-card-title">Generate New Universal Key</h4>
+                <form id="ukCreateForm" class="uk-form-grid">
+                  <div class="uk-form-field">
+                    <label for="ukInputName">Key Name / Client Tag *</label>
+                    <input id="ukInputName" class="uk-input" type="text" placeholder="e.g. Work Laptop, Cline, Cursor" required />
+                  </div>
+                  <div class="uk-form-field">
+                    <label for="ukInputModel">Default Model Override (optional)</label>
+                    <input id="ukInputModel" class="uk-input" type="text" placeholder="e.g. claude-3-7-sonnet (or leave blank)" />
+                  </div>
+                  <div class="uk-form-field">
+                    <label for="ukInputRpm">Rate Limit (RPM)</label>
+                    <input id="ukInputRpm" class="uk-input" type="number" min="1" max="1000" value="60" />
+                  </div>
+                  <div class="uk-form-field">
+                    <label for="ukInputExpiry">Expires in (Days, optional)</label>
+                    <input id="ukInputExpiry" class="uk-input" type="number" min="1" max="3650" placeholder="Never" />
+                  </div>
+                  <button id="ukCreateBtn" class="primary-button" type="submit" style="height:38px;">Generate Universal Key</button>
+                </form>
+              </div>
+
+              <!-- Active keys table -->
+              <div class="uk-table-wrapper">
+                <table class="uk-table">
+                  <thead>
+                    <tr>
+                      <th>Key Name</th>
+                      <th>Prefix</th>
+                      <th>Model Routing</th>
+                      <th>Requests</th>
+                      <th>Last Used</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ukTableBody">
+                    <tr><td colspan="7" style="text-align:center; color:var(--muted); padding:24px;">Loading keys...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section id="view-playground" class="admin-view" data-view="playground" hidden>
+            <div class="pg-container">
+              <!-- Sidebar -->
+              <aside class="pg-sidebar">
+                <div class="pg-sidebar-header">
+                  <button id="pgNewSessionBtn" class="primary-button" type="button" style="width:100%; justify-content:center;">
+                    + New Test Session
+                  </button>
+                </div>
+                <div id="pgSessionList" class="pg-session-list">
+                  <div style="padding:16px; font-size:0.8rem; color:var(--muted); text-align:center;">Loading sessions...</div>
+                </div>
+              </aside>
+
+              <!-- Main chat area -->
+              <main class="pg-main">
+                <div class="pg-topbar">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <strong id="pgActiveSessionTitle" style="color:var(--text-strong); font-size:0.95rem;">AI Model Playground</strong>
+                  </div>
+                  <div class="pg-model-picker">
+                    <label for="pgModelSelect">Target Model:</label>
+                    <select id="pgModelSelect" class="uk-input" style="padding:6px 10px; font-size:0.85rem;">
+                      <option value="auto">auto (Smart Fallback Router)</option>
+                      <option value="claude-3-7-sonnet">claude-3-7-sonnet</option>
+                      <option value="claude-3-5-sonnet">claude-3-5-sonnet</option>
+                      <option value="claude-3-5-haiku">claude-3-5-haiku</option>
+                      <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                      <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                      <option value="gpt-4o">gpt-4o</option>
+                      <option value="deepseek-chat">deepseek-chat</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div id="pgMessagesContainer" class="pg-messages-container">
+                  <div class="pg-empty-state">
+                    <p>Select a test session or start a new prompt.</p>
+                  </div>
+                </div>
+
+                <div class="pg-input-area">
+                  <div class="pg-input-wrapper">
+                    <textarea id="pgPromptInput" class="pg-textarea" placeholder="Type a prompt to test model routing, failover, and latency... (Press Enter to send, Shift+Enter for new line)"></textarea>
+                    <button id="pgSendBtn" class="primary-button" type="button" style="height:44px; padding:0 20px;">Send Prompt</button>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:var(--muted);">
+                    <span id="pgSendStatus"></span>
+                    <span>Dual-Boundary Proxy Protected · Supabase Persisted</span>
+                  </div>
+                </div>
+              </main>
+            </div>
+          </section>
         </div>
       </main>
 
@@ -273,6 +396,8 @@
     <script src="/admin/assets/__FCC_VERSION__/api_key_editor.js"></script>
     <script src="/admin/assets/__FCC_VERSION__/session_ui.js"></script>
     <script src="/admin/assets/__FCC_VERSION__/code_sessions.js"></script>
+    <script src="/admin/assets/__FCC_VERSION__/universal_keys.js"></script>
+    <script src="/admin/assets/__FCC_VERSION__/playground.js"></script>
     <script src="/admin/assets/__FCC_VERSION__/admin.js"></script>
   </body>
 </html>

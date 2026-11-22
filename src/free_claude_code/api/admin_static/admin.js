@@ -62,6 +62,20 @@ const VIEW_GROUPS = [
     sections: [],
     containerId: "codeRoot",
   },
+  {
+    id: "universal_keys",
+    label: "Universal Keys",
+    title: "Universal API Keys",
+    sections: [],
+    containerId: "view-universal_keys",
+  },
+  {
+    id: "playground",
+    label: "Playground",
+    title: "AI Model Playground",
+    sections: [],
+    containerId: "view-playground",
+  },
 ];
 
 function viewFromLocation() {
@@ -111,6 +125,7 @@ async function api(path, options = {}) {
   }
   return response.json();
 }
+window.FCCAdminApi = api;
 
 function startupButton(button, loading) {
   if (button.dataset.operationBusy) return;
@@ -272,7 +287,7 @@ function setActiveView(viewId, { scroll = false } = {}) {
   document.querySelector(".app-shell").classList.toggle("session-active", sessionActive);
   document.querySelector(".main").classList.toggle("session-main", sessionActive);
   document.querySelector(".topbar").hidden = sessionActive;
-  document.querySelector(".action-bar").hidden = sessionActive || activeView.id === "integrations";
+  document.querySelector(".action-bar").hidden = sessionActive || activeView.id === "integrations" || activeView.id === "universal_keys" || activeView.id === "playground";
 
   document.querySelectorAll(".nav-link").forEach((link) => {
     const selected = link.dataset.view === activeView.id;
@@ -295,6 +310,12 @@ function setActiveView(viewId, { scroll = false } = {}) {
   }
   if (activeView.id === "code") window.CodeSessions.activate(window.location.pathname);
   else window.CodeSessions.deactivate();
+  if (activeView.id === "universal_keys") {
+    if (window.UniversalKeysUI) window.UniversalKeysUI.activate();
+  }
+  if (activeView.id === "playground") {
+    if (window.PlaygroundUI) window.PlaygroundUI.activate();
+  }
   if (activeView.id === "integrations") {
     refreshClaudeIntegration();
     refreshClaudeOnboarding();

@@ -140,10 +140,12 @@ def build_models_list_response(
     """Return the application model inventory in the requested client view."""
     catalog = read_model_catalog(runtime, settings)
     if view in {ModelCatalogView.CLAUDE, ModelCatalogView.CLAUDE_DESKTOP}:
-        return _build_claude_models_response(
+        response = _build_claude_models_response(
             catalog, desktop=view is ModelCatalogView.CLAUDE_DESKTOP
         )
-    return _build_direct_models_response(catalog, view=view)
+    else:
+        response = _build_direct_models_response(catalog, view=view)
+    return response
 
 
 def build_muse_models_list_response(

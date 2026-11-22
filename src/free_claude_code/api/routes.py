@@ -90,6 +90,9 @@ async def create_gemini_response(
         for segment in model.split("/")
     ):
         raise HTTPException(status_code=400, detail="Invalid model resource")
+    uk_info = getattr(request.state, "universal_key", None)
+    if model == "auto" and uk_info and uk_info.get("default_model"):
+        model = uk_info["default_model"]
     streaming = action == "streamGenerateContent"
     alt = request.query_params.getlist("alt")
     if (
@@ -146,6 +149,9 @@ async def create_chat_completion(
     services: ApiServices = Depends(get_services),
     _auth=Depends(require_proxy_auth),
 ):
+    uk_info = getattr(request.state, "universal_key", None)
+    if (not request_data.model or request_data.model == "auto") and uk_info and uk_info.get("default_model"):
+        request_data = request_data.model_copy(update={"model": uk_info["default_model"]})
     lease = await services.requests.acquire()
     try:
         await lease.wait_for_token_estimation()
@@ -293,6 +299,11 @@ async def create_message(
     _auth=Depends(require_anthropic_proxy_auth),
 ):
     """Create a message (JSON by default; stream=true returns Anthropic SSE)."""
+    uk_info = getattr(request.state, "universal_key", None)
+    if isinstance(request_data, dict):
+        model = request_data.get("model")
+        if (not model or model == "auto") and uk_info and uk_info.get("default_model"):
+            request_data["model"] = uk_info["default_model"]
     return await _create_messages_response(
         services,
         cast(JsonObject, request_data),
@@ -314,6 +325,9 @@ async def create_response(
     _auth=Depends(require_proxy_auth),
 ):
     """Create an OpenAI Responses-compatible response through this proxy."""
+    uk_info = getattr(request.state, "universal_key", None)
+    if (not request_data.model or request_data.model == "auto") and uk_info and uk_info.get("default_model"):
+        request_data = request_data.model_copy(update={"model": uk_info["default_model"]})
     return await _create_responses_response(
         services,
         request_data,
@@ -384,21 +398,19 @@ async def root(
     settings: Settings = Depends(get_settings),
 ):
     accept = request.headers.get("accept", "")
-    # Programmatic API callers explicitly requesting JSON
-    if "application/json" in accept and "text/html" not in accept:
-        require_proxy_auth(request, settings)
-        return {
-            "status": "ok",
-            "provider": parse_provider_type(settings.model),
-            "model": settings.model,
-        }
+    if "text/html" in accept and not accept.startswith("*/*"):
+        from .owner_auth import is_authenticated_owner
 
-    # Browser navigation and human visitors: redirect to admin if authenticated, or login
-    from .owner_auth import is_authenticated_owner
+        if is_authenticated_owner(request):
+            return RedirectResponse(url="/admin", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
-    if is_authenticated_owner(request):
-        return RedirectResponse(url="/admin", status_code=303)
-    return RedirectResponse(url="/login", status_code=303)
+    require_proxy_auth(request, settings)
+    return {
+        "status": "ok",
+        "provider": parse_provider_type(settings.model),
+        "model": settings.model,
+    }
 
 
 @router.api_route("/", methods=["HEAD", "OPTIONS"])

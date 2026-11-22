@@ -61,6 +61,9 @@ _ADMIN_ASSET_FILENAMES = frozenset(
         "session_ui.js",
         "model_combobox.js",
         "api_key_editor.js",
+        "universal_keys.js",
+        "playground.js",
+        "playground.css",
         *(
             f"providers/{provider.logo_filename}"
             for provider in PROVIDER_CATALOG.values()
@@ -114,6 +117,8 @@ def admin_page_response() -> HTMLResponse:
 @router.get("/admin/model_config", include_in_schema=False)
 @router.get("/admin/messaging", include_in_schema=False)
 @router.get("/admin/integrations", include_in_schema=False)
+@router.get("/admin/universal_keys", include_in_schema=False)
+@router.get("/admin/playground", include_in_schema=False)
 def admin_page(request: Request):
     require_loopback_admin(request)
     return admin_page_response()

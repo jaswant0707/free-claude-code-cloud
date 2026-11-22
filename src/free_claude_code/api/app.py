@@ -41,6 +41,8 @@ from .admin_cache import (
 from .admin_routes import router as admin_router
 from .auth_routes import router as auth_router
 from .code_sessions_routes import router as code_router
+from .playground_routes import router as playground_router
+from .universal_keys_routes import router as universal_keys_router
 from .generation_paths import generation_api
 from .ports import ApiServices
 from .request_errors import ordinary_application_error_response
@@ -77,6 +79,8 @@ def create_app(services: ApiServices, *, app: FastAPI | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(admin_router)
     app.include_router(code_router)
+    app.include_router(universal_keys_router)
+    app.include_router(playground_router)
     app.include_router(router)
 
     @app.exception_handler(HTTPException)
