@@ -66,6 +66,7 @@ class ManagedConfigStore:
     def __init__(self) -> None:
         self.path = managed_env_path()
         self._lock_path = config_lock_path()
+        self._last_cloud_sync: float = 0.0
 
     @contextmanager
     def _storage_lock(self) -> Generator[None]:
@@ -86,6 +87,8 @@ class ManagedConfigStore:
 
     def _sync_from_supabase(self) -> None:
         """Hydrate local managed config and process env with persistent Supabase settings."""
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return
         try:
             from free_claude_code.config.provider_catalog import PROVIDER_CATALOG
             from free_claude_code.persistence.supabase_client import get_supabase_client
@@ -113,6 +116,8 @@ class ManagedConfigStore:
             )
             updated = False
 
+            # Collect active credentials from Supabase
+            active_keys: dict[str, str] = {}
             for conf in configs:
                 pid = conf.get("provider_id")
                 key = conf.get("api_key")
@@ -121,10 +126,8 @@ class ManagedConfigStore:
                     continue
                 if pid in provider_to_env:
                     env_var = provider_to_env[pid][0]
-                    if managed.get(env_var) != key:
-                        managed[env_var] = key
-                        os.environ[env_var] = key
-                        updated = True
+                    active_keys[env_var] = key
+
                 if conf.get("is_default") and conf.get("default_model"):
                     default_route = f"{pid}/{conf['default_model']}"
                     if not os.environ.get("MODEL") and not managed.get("MODEL"):
@@ -132,6 +135,21 @@ class ManagedConfigStore:
                         os.environ["MODEL"] = default_route
                         updated = True
 
+            # Sync active keys to managed and process env
+            for env_var, key in active_keys.items():
+                if managed.get(env_var) != key:
+                    managed[env_var] = key
+                    os.environ[env_var] = key
+                    updated = True
+
+            # Remove deleted or deactivated provider keys
+            for pid, (env_var, _) in provider_to_env.items():
+                if env_var not in active_keys and env_var in managed:
+                    del managed[env_var]
+                    os.environ.pop(env_var, None)
+                    updated = True
+
+            # Sync application settings
             for k, v in settings.items():
                 if v and managed.get(k) != v:
                     managed[k] = v
@@ -145,6 +163,8 @@ class ManagedConfigStore:
 
     def _sync_to_supabase(self, values: Mapping[str, str]) -> None:
         """Persist updated provider keys and application settings to Supabase."""
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return
         try:
             from free_claude_code.config.provider_catalog import PROVIDER_CATALOG
             from free_claude_code.persistence.supabase_client import get_supabase_client
@@ -178,6 +198,8 @@ class ManagedConfigStore:
                     "DEFAULT_REASONING_EFFORT",
                     "PROVIDER_RATE_LIMIT",
                     "PROXY_AUTH_ENABLED",
+                    "ANTHROPIC_AUTH_TOKEN",
+                    "PROXY_AUTH_TOKEN",
                 ):
                     client.upsert_app_setting(key, val)
         except Exception as exc:
@@ -198,6 +220,19 @@ class ManagedConfigStore:
         return managed
 
     def read(self, env: Mapping[str, str] | None = None) -> ManagedConfigSnapshot:
+        is_cloud = bool(
+            os.getenv("FCC_CLOUD_DEPLOYMENT")
+            or os.getenv("VERCEL")
+            or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+        )
+        if is_cloud and not os.getenv("PYTEST_CURRENT_TEST"):
+            import time
+
+            now = time.monotonic()
+            if now - self._last_cloud_sync > 5.0 or not self.path.is_file():
+                self._sync_from_supabase()
+                self._last_cloud_sync = now
+
         process = dict(os.environ if env is None else env)
         # Windows readers deny replacement while their file handles remain open.
         with self._storage_lock():

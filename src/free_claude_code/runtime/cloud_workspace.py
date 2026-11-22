@@ -1,51 +1,61 @@
 """Cloud Workspace Manager for Free Claude Code Cloud.
 
 Provides isolated cloud workspaces, git repository cloning, safe path resolution
-(preventing traversal attacks), and command execution inside session workspaces.
+(preventing traversal attacks via is_relative_to), output capping, and command execution
+inside session workspaces.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from loguru import logger
 
 from free_claude_code.config.paths import config_dir_path
 from free_claude_code.persistence.supabase_client import get_supabase_client
 
+# Maximum output allowed in command results (512 KB) to prevent DoS / memory exhaustion
+_MAX_OUTPUT_BYTES: Final[int] = 512 * 1024
+
+# Allowed git URL pattern: https://, http://, git@, ssh://
+_SAFE_GIT_URL_REGEX: Final[re.Pattern[str]] = re.compile(
+    r"^(https?://|git@|ssh://)[\w\.\-~:@/]+(\.git)?/?$"
+)
+
 
 def get_workspaces_root() -> Path:
     """Return the base directory for cloud workspaces."""
     override = os.getenv("FCC_WORKSPACES_DIR")
     if override:
-        path = Path(override)
+        path = Path(override).resolve()
     else:
-        path = config_dir_path() / "workspaces"
+        path = (config_dir_path() / "workspaces").resolve()
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def sanitize_session_id(session_id: str) -> str:
-    """Sanitize session ID to prevent path injection."""
+    """Sanitize session ID to strictly alphanumeric characters, dashes, and underscores."""
     clean = "".join(c for c in session_id if c.isalnum() or c in ("-", "_")).strip()
     if not clean:
-        raise ValueError("Invalid session ID")
+        raise ValueError("Invalid session ID: must contain alphanumeric characters")
     return clean
 
 
 def get_session_workspace_path(session_id: str, create: bool = False) -> Path:
-    """Return the root path of an isolated session workspace."""
+    """Return the root path of an isolated session workspace, strictly verifying containment."""
     clean_id = sanitize_session_id(session_id)
     root = get_workspaces_root().resolve()
     target = (root / clean_id).resolve()
-    if not str(target).startswith(str(root)):
-        raise PermissionError("Path traversal prohibited")
+    if not target.is_relative_to(root):
+        raise PermissionError("Path traversal prohibited: workspace path escapes root")
     if create:
         target.mkdir(parents=True, exist_ok=True)
     return target
@@ -59,9 +69,19 @@ def resolve_safe_workspace_path(session_id: str, relative_path: str = "") -> Pat
     
     clean_rel = relative_path.strip().lstrip("/\\")
     target = (ws_root / clean_rel).resolve()
-    if not str(target).startswith(str(ws_root)):
+    if not target.is_relative_to(ws_root):
         raise PermissionError(f"Access outside workspace sandbox prohibited: {relative_path}")
     return target
+
+
+def validate_repo_url(repo_url: str) -> bool:
+    """Validate that repository URL is safe and not an injection vector."""
+    if not repo_url or repo_url.startswith("-"):
+        return False
+    # Reject dangerous protocols and local file references
+    if any(repo_url.lower().startswith(p) for p in ("file:", "ext::", "fd::")):
+        return False
+    return bool(_SAFE_GIT_URL_REGEX.match(repo_url))
 
 
 async def prepare_workspace(
@@ -75,7 +95,7 @@ async def prepare_workspace(
 
     if repo_url_or_path:
         target = repo_url_or_path.strip()
-        if target.startswith(("http://", "https://", "git@", "ssh://")):
+        if validate_repo_url(target):
             repo_url = target
             logger.info("Cloning git repository {} into workspace {}", repo_url, ws_path)
             try:
@@ -139,6 +159,7 @@ async def execute_command(
     ws_path = get_session_workspace_path(session_id, create=True)
     start_time = time.time()
     logger.info("Executing command in workspace {}: {}", ws_path, command)
+    proc = None
     try:
         proc = await asyncio.create_subprocess_shell(
             command,
@@ -148,6 +169,12 @@ async def execute_command(
         )
         stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         duration = time.time() - start_time
+
+        # Cap output at 512 KB to prevent memory exhaustion
+        if len(stdout_bytes) > _MAX_OUTPUT_BYTES:
+            stdout_bytes = stdout_bytes[:_MAX_OUTPUT_BYTES] + b"\n... [Output truncated at 512KB limit]"
+        if len(stderr_bytes) > _MAX_OUTPUT_BYTES:
+            stderr_bytes = stderr_bytes[:_MAX_OUTPUT_BYTES] + b"\n... [Stderr truncated at 512KB limit]"
 
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")
@@ -181,10 +208,12 @@ async def execute_command(
 
         return result
     except asyncio.TimeoutError:
-        try:
-            proc.kill()
-        except Exception:
-            pass
+        if proc:
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
         return {
             "session_id": session_id,
             "command": command,
@@ -212,7 +241,7 @@ def cleanup_workspace(session_id: str) -> bool:
         clean_id = sanitize_session_id(session_id)
         root = get_workspaces_root().resolve()
         target = (root / clean_id).resolve()
-        if target.exists() and str(target).startswith(str(root)):
+        if target.exists() and target.is_relative_to(root):
             shutil.rmtree(target, ignore_errors=True)
             return True
         return False

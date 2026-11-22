@@ -201,7 +201,22 @@ def _proxy_token_matches(
                 if not is_valid_admin_token(env_val):
                     valid_tokens.append(env_val)
 
-    # 3. In local development mode, if no custom token was configured, allow configured default
+    # 3. Persistent proxy auth token from Supabase in cloud deployments
+    if is_cloud and not os.getenv("PYTEST_CURRENT_TEST"):
+        try:
+            from free_claude_code.persistence.supabase_client import get_supabase_client
+
+            client = get_supabase_client()
+            if client.is_configured:
+                cloud_settings = client.get_app_settings()
+                cloud_token = cloud_settings.get("ANTHROPIC_AUTH_TOKEN") or cloud_settings.get("PROXY_AUTH_TOKEN")
+                if cloud_token and cloud_token not in valid_tokens and cloud_token != "freecc":
+                    if not is_valid_admin_token(cloud_token):
+                        valid_tokens.append(cloud_token)
+        except Exception:
+            pass
+
+    # 4. In local development mode, if no custom token was configured, allow configured default
     if not valid_tokens and not is_cloud and configured_token:
         valid_tokens.append(configured_token)
 
