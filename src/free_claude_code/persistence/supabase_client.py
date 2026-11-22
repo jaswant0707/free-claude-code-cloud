@@ -9,6 +9,7 @@ Interacts with Supabase PostgREST RPC endpoints to persist and load:
 
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Any, Final
 from loguru import logger
@@ -40,26 +41,58 @@ class SupabaseClient:
             or _DEFAULT_SUPABASE_URL
         )
         self.base_url = url.rstrip("/")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
         self.anon_key = (
-            anon_key
+            service_role_key
+            or anon_key
             or os.getenv("SUPABASE_ANON_KEY", "").strip()
             or os.getenv("SUPABASE_KEY", "").strip()
             or _DEFAULT_ANON_KEY
         )
         self.timeout = timeout
         self.rpc_url = f"{self.base_url}/rest/v1/rpc"
+        self._limits = httpx.Limits(
+            max_keepalive_connections=20, max_connections=50, keepalive_expiry=30.0
+        )
+        self._sync_client: httpx.Client | None = None
+        self._async_client: httpx.AsyncClient | None = None
 
     @property
     def is_configured(self) -> bool:
         return bool(self.base_url and self.anon_key)
 
+    def _get_sync_client(self) -> httpx.Client:
+        if self._sync_client is None or self._sync_client.is_closed:
+            self._sync_client = httpx.Client(timeout=self.timeout, limits=self._limits)
+        return self._sync_client
+
+    def _get_async_client(self) -> httpx.AsyncClient:
+        if self._async_client is None or self._async_client.is_closed:
+            self._async_client = httpx.AsyncClient(timeout=self.timeout, limits=self._limits)
+        return self._async_client
+
+    def close(self) -> None:
+        if self._sync_client and not self._sync_client.is_closed:
+            self._sync_client.close()
+
+    async def aclose(self) -> None:
+        if self._async_client and not self._async_client.is_closed:
+            await self._async_client.aclose()
+
     def _headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "apikey": self.anon_key,
             "Authorization": f"Bearer {self.anon_key}",
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         }
+        server_token = os.getenv("FCC_SERVER_TOKEN", "").strip()
+        if not server_token:
+            enc_key = os.getenv("FCC_ENCRYPTION_KEY", "").strip()
+            salt = enc_key or "fcc-backend-authorization-seed-2026"
+            server_token = hashlib.sha256(f"fcc-server-token:{salt}".encode("utf-8")).hexdigest()
+        headers["x-fcc-server-token"] = server_token
+        return headers
 
     def _rpc(self, function_name: str, payload: dict[str, Any] | None = None) -> Any:
         """Call a Supabase PostgreSQL stored function via PostgREST RPC synchronously."""
@@ -67,21 +100,21 @@ class SupabaseClient:
             return None
         url = f"{self.rpc_url}/{function_name}"
         try:
-            with httpx.Client(timeout=self.timeout) as client:
-                resp = client.post(
-                    url,
-                    headers=self._headers(),
-                    json=payload or {},
+            client = self._get_sync_client()
+            resp = client.post(
+                url,
+                headers=self._headers(),
+                json=payload or {},
+            )
+            if resp.status_code >= 400:
+                logger.warning(
+                    "Supabase RPC {} failed with status {}: {}",
+                    function_name,
+                    resp.status_code,
+                    resp.text,
                 )
-                if resp.status_code >= 400:
-                    logger.warning(
-                        "Supabase RPC {} failed with status {}: {}",
-                        function_name,
-                        resp.status_code,
-                        resp.text,
-                    )
-                    return None
-                return resp.json()
+                return None
+            return resp.json()
         except Exception as exc:
             logger.warning("Supabase RPC {} error: {}", function_name, exc)
             return None
@@ -94,21 +127,21 @@ class SupabaseClient:
             return None
         url = f"{self.rpc_url}/{function_name}"
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.post(
-                    url,
-                    headers=self._headers(),
-                    json=payload or {},
+            client = self._get_async_client()
+            resp = await client.post(
+                url,
+                headers=self._headers(),
+                json=payload or {},
+            )
+            if resp.status_code >= 400:
+                logger.warning(
+                    "Supabase async RPC {} failed with status {}: {}",
+                    function_name,
+                    resp.status_code,
+                    resp.text,
                 )
-                if resp.status_code >= 400:
-                    logger.warning(
-                        "Supabase async RPC {} failed with status {}: {}",
-                        function_name,
-                        resp.status_code,
-                        resp.text,
-                    )
-                    return None
-                return resp.json()
+                return None
+            return resp.json()
         except Exception as exc:
             logger.warning("Supabase async RPC {} error: {}", function_name, exc)
             return None
@@ -199,20 +232,25 @@ class SupabaseClient:
 
     def get_app_settings(self) -> dict[str, str]:
         """Fetch all persistent application settings."""
-        rows = self._rpc("fcc_get_app_settings", {}) or []
+        res = self._rpc("fcc_get_app_settings", {})
+        if not res:
+            return {}
+        if isinstance(res, dict):
+            return res
         settings: dict[str, str] = {}
-        for row in rows:
-            k = row.get("key")
-            v = row.get("value")
-            is_sec = row.get("is_secret", False)
-            if k and v:
-                if is_sec:
-                    try:
-                        settings[k] = decrypt_secret(v)
-                    except Exception:
+        for row in res:
+            if isinstance(row, dict):
+                k = row.get("key")
+                v = row.get("value")
+                is_sec = row.get("is_secret", False)
+                if k and v:
+                    if is_sec:
+                        try:
+                            settings[k] = decrypt_secret(v)
+                        except Exception:
+                            settings[k] = v
+                    else:
                         settings[k] = v
-                else:
-                    settings[k] = v
         return settings
 
     # --------------------------------------------------------------------------

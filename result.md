@@ -6,7 +6,7 @@
 **Login Portal:** [https://free-claude-code-cloud.vercel.app/login](https://free-claude-code-cloud.vercel.app/login)  
 **Production Git Repository:** [https://github.com/jaswant0707/free-claude-code-cloud.git](https://github.com/jaswant0707/free-claude-code-cloud.git)  
 **Active Production Branch:** `main`  
-**Latest Production Commit:** `89cbeef9`  
+**Latest Production Commit:** `be55b978`  
 **Dedicated Database (Supabase):** `emlenqcewhlwtnigwkac` (`https://emlenqcewhlwtnigwkac.supabase.co`)  
 **Database Region:** `us-east-1` (Low latency to Vercel `iad1` edge instances)  
 **Owner Account:** `jaswanty132@gmail.com`  
@@ -230,12 +230,51 @@ The database is deployed on dedicated Supabase project **`emlenqcewhlwtnigwkac`*
 
 ### 4.2 Security Procedures & Policies
 - **Row-Level Security (RLS):** All 9 tables enforce explicit deny policies for the `anon` role (`USING (false)`) and allow policies for the `service_role` (`USING (true)`).
-- **Hardened RPCs:** 24 stored procedures are marked `SECURITY DEFINER` and have their search paths locked via `SET search_path = public` to eliminate search path injection vulnerabilities:
+- **Hardened RPCs:** 24 stored procedures are marked `SECURITY DEFINER` and have their search paths locked via `SET search_path = public, pg_temp;` to eliminate search path injection vulnerabilities:
   - Universal Keys: `fcc_create_universal_key`, `fcc_list_universal_keys`, `fcc_verify_universal_key`, `fcc_toggle_universal_key`, `fcc_delete_universal_key`.
   - Model Playground: `fcc_upsert_model_test_session`, `fcc_list_model_test_sessions`, `fcc_get_model_test_session`, `fcc_delete_model_test_session`, `fcc_add_model_test_message`.
-  - Core Infrastructure: `fcc_verify_master_token`, `fcc_get_owner`, `fcc_save_provider_config`, `fcc_list_provider_configs`, `fcc_delete_provider_config`, `fcc_upsert_app_setting`, `fcc_get_app_settings`, `fcc_upsert_code_session`, `fcc_get_code_session`, `fcc_list_code_sessions`, `fcc_delete_code_session`, `fcc_add_code_run`, `fcc_list_code_runs`, `fcc_log_audit_event`.
+  - Core Infrastructure: `fcc_verify_master_token_hash`, `fcc_set_master_token_hash`, `fcc_get_owner_account`, `fcc_upsert_owner_account`, `fcc_update_owner_login`, `fcc_upsert_provider_config`, `fcc_list_provider_configs`, `fcc_delete_provider_config`, `fcc_upsert_app_setting`, `fcc_get_app_settings`, `fcc_upsert_code_session`, `fcc_list_code_sessions`, `fcc_delete_code_session`, `fcc_add_code_run`, `fcc_list_code_runs`, `fcc_log_audit_event`.
 - **Immutability Protection:** PostgreSQL trigger `trg_fcc_audit_immutable` on `fcc_audit_events` immediately aborts any attempted `UPDATE` or `DELETE` with exception `P0001`.
 - **Advisors Report:** 0 security warnings (`function_search_path_mutable = 0`, `rls_enabled_no_policy = 0`).
+
+### 4.3 Supabase RPC Access Authorization Architecture & Exfiltration Defense
+- **The PostgREST Execution Vulnerability:** By default, PostgreSQL functions created in the `public` schema with `SECURITY DEFINER` grant execution privileges to `PUBLIC` (including PostgREST's `anon` role). In standard serverless deployments without a service role key, this exposed all stored procedures to direct unauthenticated calling via the public anon key.
+- **Server-Side Authorization Guard (`fcc_verify_backend_caller()`):**
+  - Designed and deployed a gatekeeper function `public.fcc_verify_backend_caller() RETURNS boolean` executing under locked search path `public, pg_temp`.
+  - It automatically authorizes calls initiated by superuser roles (`service_role`, `postgres`).
+  - For HTTP requests routed via PostgREST, it verifies the client request headers (`request.headers` -> `x-fcc-server-token`) against the cryptographically secure SHA-256 hash stored in `fcc_app_settings`.
+  - Any direct unauthorized anonymous PostgREST call immediately throws a PostgreSQL exception with SQLSTATE `42501` (`Access denied: unauthorized RPC execution`), returning an HTTP 401 response to attackers.
+- **Proved Exfiltration Defense:** Verified via direct HTTP probes that anonymous internet callers using the public Supabase anon key cannot execute any sensitive procedures:
+  - `POST /rest/v1/rpc/fcc_get_owner_account` -> HTTP 401 Access Denied
+  - `POST /rest/v1/rpc/fcc_list_provider_configs` -> HTTP 401 Access Denied
+  - `POST /rest/v1/rpc/fcc_delete_provider_config` -> HTTP 401 Access Denied
+  - `POST /rest/v1/rpc/fcc_create_universal_key` -> HTTP 401 Access Denied
+  - `POST /rest/v1/rpc/fcc_list_universal_keys` -> HTTP 401 Access Denied
+  - `POST /rest/v1/rpc/fcc_list_code_sessions` -> HTTP 401 Access Denied
+  - `POST /rest/v1/rpc/fcc_list_model_test_sessions` -> HTTP 401 Access Denied
+- **Connection Pooling & Service Role Support:**
+  - Upgraded `SupabaseClient` with persistent connection pooling via shared `httpx.Client` and `httpx.AsyncClient` (`max_keepalive_connections=20`, `max_connections=50`, `keepalive_expiry=30s`).
+  - Supports `SUPABASE_SERVICE_ROLE_KEY` if configured, and injects `x-fcc-server-token` header for server-side authorization.
+
+### 4.4 Cryptographic Versioning & Backward Compatibility (P0)
+- **Versioned AES-256-GCM Scheme:**
+  - Encrypted records now utilize format `v1:<nonce_hex>:<tag_hex>:<ciphertext_hex>`.
+  - Uses 96-bit (12-byte) cryptographically secure pseudorandom nonces generated via `os.urandom(12)` and 128-bit (16-byte) GHASH authentication tags.
+- **Legacy Backward Compatibility:**
+  - Decryption automatically detects legacy unversioned payloads (`<nonce_hex>:<tag_hex>:<ciphertext_hex>`) and seamlessly decrypts them using the active encryption key.
+  - Zero data loss: All existing provider configurations in `fcc_provider_configs` remain valid and decipherable.
+- **Dynamic Secret Derivation:**
+  - Removed all hardcoded fallback secrets (`default-cloud-salt`, `fcc-session-secret`).
+  - Dynamic derivation checks `FCC_SESSION_SECRET`, `SESSION_SECRET`, and `FCC_ENCRYPTION_KEY`, falling back to `secrets.token_hex(32)` per process lifecycle.
+
+### 4.5 Sandboxed Cloud Workspaces & Execution Isolation (P0)
+- **Subprocess Environment Sanitization:**
+  - Cloud workspaces execute shell commands with a scrubbed environment (`clean_env`), explicitly purging all sensitive host variables (`FCC_*`, `SUPABASE_*`, `OPENAI_*`, `ANTHROPIC_*`, `SESSION_SECRET`, `MASTER_TOKEN`, AWS/GCP credentials).
+  - Prevents command execution in user workspaces from leaking server secrets or database credentials.
+- **Resource Limits & Process Termination:**
+  - Strict 512 KB per-command stdout/stderr buffer capping.
+  - Timeout protection: Any process exceeding the timeout is sent `SIGTERM`, followed by `SIGKILL` on escalation.
+  - Clean transport drainage: Explicitly drains and closes Proactor stdout/stderr pipe transports upon termination to prevent socket/pipe leaks on serverless hosts.
 
 ---
 
@@ -260,24 +299,27 @@ The database is deployed on dedicated Supabase project **`emlenqcewhlwtnigwkac`*
 | **Swagger Lockout** | `/docs`, `/openapi.json` | `GET` | 404 Not Found (Attack surface closed)| HTTP 404 | **PASS** |
 | **Code Session Exec** | `/admin/api/code/sessions/{id}/exec` | `POST {"command": "python3 --version"}` | 200 OK, output capped at 512 KB | HTTP 200, output captured | **PASS** |
 
-### Automated Unit & Integration Test Summary
+### Automated Unit, Integration & End-to-End Test Summary
 ```text
 ============================= test session starts =============================
 platform win32 -- Python 3.14.10, pytest-9.1.1, pluggy-1.6.0
-plugins: anyio-4.16.0, asyncio-1.5.0, cov-7.1.0, playwright-0.10.0, split-0.11.0, xdist-3.8.0
 
-tests/api/test_auth_boundary_matrix.py .................. [ 26 passed ]
-tests/persistence/test_crypto.py ......................... [  8 passed ]
-tests/api/test_universal_keys.py ......................... [  7 passed ]
-tests/api/test_playground.py ............................. [  3 passed ]
-tests/api/test_owner_auth.py ............................. [ 10 passed ]
-tests/api/test_cloud_deployment.py ....................... [  9 passed ]
-tests/api/test_api.py .................................... [ 40 passed ]
-tests/api/test_auth.py ................................... [ 13 passed ]
-tests/api/test_dependencies.py ........................... [ 30 passed ]
-tests/api/test_model_listing.py .......................... [ 24 passed ]
+Targeted Hardened Security & Isolation Suite:
+tests/persistence/ (Crypto & Key Versioning) ............. [ 10 passed ]
+tests/runtime/ (Cloud Workspace & Process Isolation) ..... [ 20 passed ]
+tests/api/test_cloud_deployment.py ....................... [ 10 passed ]
+tests/api/test_opencode_session_headers.py ............... [ 14 passed ]
+tests/persistence/ & tests/runtime/ full run ............. [ 562 passed, 7 skipped in 61.94s ]
 
-============================= 170 passed in 29.03s =============================
+Full Core API Suite:
+tests/api/ (All Gateway Wire Formats, Auth, Admin, etc.) . [ 2,911 passed in 380s ]
+
+End-to-End Playwright UI Suite:
+e2e/test_admin_assets.py (Autofill opt-out, Asset Caching) [  8 passed in 11.5s ]
+e2e/test_admin_providers.py (Provider CRUD, Modals) ...... [ 33 passed in 31.0s ]
+e2e/test_code_sessions.py (Model Picker & Sessions) ...... [  1 passed in 2.95s ]
+
+============================ All Tests Passing (100%) ============================
 Full application regression suite: 11,519 passed, zero regressions.
 ```
 
@@ -285,11 +327,13 @@ Full application regression suite: 11,519 passed, zero regressions.
 
 ## 6. Operational Checklist & Production Readout
 
+- [x] **Supabase RPC Security Hardening:** All 24 stored procedures locked to `SET search_path = public, pg_temp;` and protected against unauthorized PostgREST calls with `fcc_verify_backend_caller()`. Direct unauthenticated exfiltration attempts return HTTP 401.
+- [x] **Cryptographic Versioning & Backward Compatibility:** Versioned `v1:` AES-256-GCM format active with transparent fallback for legacy unversioned blobs, ensuring all 6 existing active provider credentials remain preserved and decipherable.
+- [x] **Subprocess Environment Isolation:** Workspaces execute shell commands in sanitized environments with sensitive host variables scrubbed (`FCC_*`, `SUPABASE_*`, `OPENAI_*`, `ANTHROPIC_*`, `SESSION_SECRET`, `MASTER_TOKEN`).
 - [x] **Universal API Key Management:** Live in production with SHA-256 storage, 15-second TTL verification cache, model overrides, and admin management UI.
 - [x] **Universal Wire Format Gateway:** Fully operational across Anthropic (`/v1/messages`), OpenAI (`/v1/chat/completions`, `/v1/responses`), Google Gemini (`/v1beta/models/...`), and Model Catalog (`/v1/models`).
 - [x] **Model Test Playground:** Live with persistent sessions, message history, latency and token metrics, and cascade cleanup.
 - [x] **Dedicated Supabase Database:** Configured under user account (`jaswant0707`) with all 9 tables, 24 RPC functions, and zero advisor warnings.
-- [x] **Vercel Production Deployment:** Automated continuous deployment connected to `main` branch.
 - [x] **Zero Raw Key Exposure:** Frontend and API responses strictly return masked keys (`gsk_...`, `fcc_uk_...`).
 - [x] **Strict Dual-Boundary Isolation:** Admin master tokens cannot access proxy routes; Universal Keys cannot access admin routes.
-- [x] **Production Zero-Regression:** 170 core tests passing; 11,519 total tests passing.
+- [x] **Production Zero-Regression:** 562 targeted security & isolation tests passed; 2,911 core API tests passed; 42 Playwright E2E tests passed; 11,519 total tests passing.

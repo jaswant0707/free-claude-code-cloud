@@ -746,9 +746,9 @@
         folder.autocomplete = "off";
         label(form, "Harness", harness);
         const field = element("div", undefined, "code-field");
-        const caption = element("label", "Cloud Workspace or Git URL");
+        const caption = element("label", "Folder");
         folder.id = `code-folder-${id}`;
-        folder.placeholder = "https://github.com/... or cloud-project-name";
+        folder.placeholder = "https://github.com/... or folder path";
         caption.htmlFor = folder.id;
         const row = element("div", undefined, "code-folder-row");
         let selectedPath = null;
@@ -771,7 +771,7 @@
             ? "Line breaks in this folder name are shown as ␍ and ␊."
             : "";
         }
-        const browse = button("Workspaces…", async () => {
+        const browse = button("Browse…", async () => {
           if (!context.isOpen() || context.isBusy()) return;
           const initial = readFolder();
           context.setBusy(true);

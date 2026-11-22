@@ -46,12 +46,24 @@ def get_master_api_token() -> str | None:
     return token if token else None
 
 
+_PROCESS_FALLBACK_SIGNING_SECRET = secrets.token_hex(32)
+
+
 def _get_signing_key() -> bytes:
-    """Derive an internal cryptographic signing key for session tokens."""
-    password = get_owner_password() or "default-cloud-salt"
-    token = get_master_api_token() or "fcc-session-secret"
-    derived = hashlib.sha256(f"{password}:{token}".encode("utf-8")).digest()
-    return derived
+    """Derive an internal cryptographic signing key for session tokens without hardcoded fallbacks."""
+    secret = (
+        os.getenv("FCC_SESSION_SECRET", "").strip()
+        or os.getenv("SESSION_SECRET", "").strip()
+        or os.getenv("FCC_ENCRYPTION_KEY", "").strip()
+    )
+    if not secret:
+        password = get_owner_password()
+        token = get_master_api_token()
+        if password or token:
+            secret = f"{password}:{token}"
+        else:
+            secret = _PROCESS_FALLBACK_SIGNING_SECRET
+    return hashlib.sha256(secret.encode("utf-8")).digest()
 
 
 def check_login_rate_limit(client_ip: str) -> bool:

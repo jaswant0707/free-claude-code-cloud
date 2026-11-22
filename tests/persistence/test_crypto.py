@@ -177,3 +177,34 @@ def test_mask_secret():
     assert masked.endswith("O4tJ")
     assert "..." in masked
     assert "123456789abcdef" not in masked
+
+
+def test_key_versioning_and_migration(monkeypatch):
+    """Verify legacy secrets encrypted under v1 decrypt cleanly under v2 with migration."""
+    from free_claude_code.persistence.crypto import get_legacy_encryption_key, migrate_secret
+
+    monkeypatch.delenv("FCC_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "legacy_anon_key_for_testing_123")
+    legacy_key = get_legacy_encryption_key()
+
+    plain_secret = "gsk_prod_live_credential_999"
+    # Legacy ciphertext generated with legacy key
+    legacy_ciphertext = encrypt_secret(plain_secret, key=legacy_key)
+
+    # Now simulate setting the dedicated FCC_ENCRYPTION_KEY
+    monkeypatch.setenv("FCC_ENCRYPTION_KEY", "brand_new_dedicated_secret_key_888")
+    new_active_key = get_encryption_key()
+    assert new_active_key != legacy_key
+
+    # Automatic fallback decryption of legacy ciphertext
+    decrypted = decrypt_secret(legacy_ciphertext)
+    assert decrypted == plain_secret
+
+    # Migration to new active key
+    migrated_ciphertext = migrate_secret(legacy_ciphertext)
+    assert migrated_ciphertext != legacy_ciphertext
+
+    # Migrated secret decrypts with new key
+    assert decrypt_secret(migrated_ciphertext) == plain_secret
+    assert decrypt_secret(f"v2:{migrated_ciphertext}") == plain_secret
+

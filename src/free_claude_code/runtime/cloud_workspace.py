@@ -1,8 +1,9 @@
 """Cloud Workspace Manager for Free Claude Code Cloud.
 
 Provides isolated cloud workspaces, git repository cloning, safe path resolution
-(preventing traversal attacks via is_relative_to), output capping, and command execution
-inside session workspaces.
+(preventing traversal attacks via is_relative_to), environment variable sanitization
+(preventing host credential leakage), command validation, output capping,
+cancellation support, and automatic workspace lifecycle cleanup.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Any, Final
+from urllib.parse import urlparse
 
 from loguru import logger
 
@@ -28,6 +30,19 @@ _MAX_OUTPUT_BYTES: Final[int] = 512 * 1024
 _SAFE_GIT_URL_REGEX: Final[re.Pattern[str]] = re.compile(
     r"^(https?://|git@|ssh://)[\w\.\-~:@/]+(\.git)?/?$"
 )
+
+# Active processes per session for cancellation
+_active_processes: dict[str, asyncio.subprocess.Process] = {}
+
+# Blocked SSRF hostnames and metadata endpoints
+_BLOCKED_HOSTS: Final[set[str]] = {
+    "169.254.169.254",
+    "metadata.google.internal",
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "::1",
+}
 
 
 def get_workspaces_root() -> Path:
@@ -66,7 +81,7 @@ def resolve_safe_workspace_path(session_id: str, relative_path: str = "") -> Pat
     ws_root = get_session_workspace_path(session_id, create=True).resolve()
     if not relative_path or relative_path.strip() in (".", "/"):
         return ws_root
-    
+
     clean_rel = relative_path.strip().lstrip("/\\")
     target = (ws_root / clean_rel).resolve()
     if not target.is_relative_to(ws_root):
@@ -75,13 +90,48 @@ def resolve_safe_workspace_path(session_id: str, relative_path: str = "") -> Pat
 
 
 def validate_repo_url(repo_url: str) -> bool:
-    """Validate that repository URL is safe and not an injection vector."""
+    """Validate that repository URL is safe, valid, and not an SSRF or injection vector."""
     if not repo_url or repo_url.startswith("-"):
         return False
-    # Reject dangerous protocols and local file references
+    # Reject dangerous git protocols
     if any(repo_url.lower().startswith(p) for p in ("file:", "ext::", "fd::")):
         return False
-    return bool(_SAFE_GIT_URL_REGEX.match(repo_url))
+    if not _SAFE_GIT_URL_REGEX.match(repo_url):
+        return False
+
+    # Block SSRF to cloud metadata services or private network hosts
+    try:
+        parsed = urlparse(repo_url)
+        hostname = (parsed.hostname or "").lower()
+        if hostname in _BLOCKED_HOSTS or hostname.startswith("127.") or hostname.startswith("10.") or hostname.startswith("192.168."):
+            return False
+    except Exception:
+        return False
+
+    return True
+
+
+def get_isolated_sandbox_env(session_id: str, ws_path: Path) -> dict[str, str]:
+    """Build a sanitized environment strictly excluding host secrets, credentials, and tokens.
+    
+    Prevents execution commands from exfiltrating cloud tokens, Supabase keys, or provider API keys.
+    """
+    safe_path = os.getenv("PATH", "/usr/local/bin:/usr/bin:/bin")
+    if os.name == "nt":
+        safe_path = os.getenv("PATH", r"C:\Windows\system32;C:\Windows;C:\Program Files\Git\bin")
+
+    return {
+        "PATH": safe_path,
+        "HOME": str(ws_path),
+        "USERPROFILE": str(ws_path),
+        "TMPDIR": str(ws_path),
+        "TEMP": str(ws_path),
+        "TMP": str(ws_path),
+        "LANG": "en_US.UTF-8",
+        "LC_ALL": "en_US.UTF-8",
+        "FCC_SESSION_ID": session_id,
+        "FCC_SANDBOX": "1",
+    }
 
 
 async def prepare_workspace(
@@ -103,6 +153,7 @@ async def prepare_workspace(
                     "git", "clone", "--depth", "1", repo_url, str(ws_path),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    env=get_isolated_sandbox_env(session_id, ws_path),
                 )
                 stdout, stderr = await proc.communicate()
                 if proc.returncode != 0:
@@ -155,18 +206,37 @@ async def execute_command(
     timeout: float = 30.0,
     owner_email: str = "jaswanty132@gmail.com",
 ) -> dict[str, Any]:
-    """Execute a real shell or cli command inside the isolated session workspace."""
+    """Execute a shell or cli command inside the isolated session workspace with stripped environment."""
     ws_path = get_session_workspace_path(session_id, create=True)
     start_time = time.time()
     logger.info("Executing command in workspace {}: {}", ws_path, command)
+
+    # Sanitize and validate command to prevent cloud metadata SSRF
+    cmd_lower = command.lower()
+    for blocked in _BLOCKED_HOSTS:
+        if blocked in cmd_lower:
+            return {
+                "session_id": session_id,
+                "command": command,
+                "exit_code": 1,
+                "stdout": "",
+                "stderr": f"Execution rejected: access to internal host '{blocked}' is prohibited.",
+                "duration": 0.0,
+                "status": "blocked",
+            }
+
     proc = None
     try:
+        sandbox_env = get_isolated_sandbox_env(session_id, ws_path)
         proc = await asyncio.create_subprocess_shell(
             command,
             cwd=str(ws_path),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=sandbox_env,
         )
+        _active_processes[session_id] = proc
+
         stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         duration = time.time() - start_time
 
@@ -211,7 +281,10 @@ async def execute_command(
         if proc:
             try:
                 proc.kill()
-                await proc.wait()
+            except Exception:
+                pass
+            try:
+                await proc.communicate()
             except Exception:
                 pass
         return {
@@ -233,6 +306,39 @@ async def execute_command(
             "duration": round(time.time() - start_time, 3),
             "status": "error",
         }
+    finally:
+        _active_processes.pop(session_id, None)
+
+
+async def cancel_session_command(session_id: str) -> bool:
+    """Terminate and cancel any currently running process in the given session."""
+    proc = _active_processes.get(session_id)
+    if proc and proc.returncode is None:
+        try:
+            try:
+                proc.terminate()
+            except ProcessLookupError:
+                pass
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                    await asyncio.wait_for(proc.wait(), timeout=1.0)
+                except Exception:
+                    pass
+            logger.info("Process in session {} successfully cancelled", session_id)
+            for pipe in (proc.stdout, proc.stderr):
+                if pipe and hasattr(pipe, "_transport") and pipe._transport:
+                    try:
+                        pipe._transport.close()
+                    except Exception:
+                        pass
+            return True
+        except Exception as exc:
+            logger.warning("Failed to cancel process in session {}: {}", session_id, exc)
+            return False
+    return False
 
 
 def cleanup_workspace(session_id: str) -> bool:
@@ -248,3 +354,27 @@ def cleanup_workspace(session_id: str) -> bool:
     except Exception as exc:
         logger.warning("Error cleaning workspace {}: {}", session_id, exc)
         return False
+
+
+def cleanup_expired_workspaces(max_age_hours: int = 24) -> int:
+    """Remove workspaces that have not been modified within max_age_hours."""
+    root = get_workspaces_root().resolve()
+    now = time.time()
+    cutoff = now - (max_age_hours * 3600)
+    cleaned_count = 0
+
+    try:
+        for item in root.iterdir():
+            if item.is_dir() and item.is_relative_to(root):
+                try:
+                    mtime = item.stat().st_mtime
+                    if mtime < cutoff:
+                        shutil.rmtree(item, ignore_errors=True)
+                        cleaned_count += 1
+                        logger.info("Cleaned expired workspace: {}", item.name)
+                except Exception:
+                    pass
+    except Exception as exc:
+        logger.warning("Error during expired workspace cleanup: {}", exc)
+
+    return cleaned_count

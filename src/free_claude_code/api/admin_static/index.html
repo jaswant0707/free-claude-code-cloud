@@ -263,22 +263,22 @@
               <!-- Generate key form -->
               <div class="uk-card">
                 <h4 class="uk-card-title">Generate New Universal Key</h4>
-                <form id="ukCreateForm" class="uk-form-grid">
+                <form id="ukCreateForm" class="uk-form-grid" autocomplete="off" data-1p-ignore="" data-bwignore="" data-form-type="other">
                   <div class="uk-form-field">
                     <label for="ukInputName">Key Name / Client Tag *</label>
-                    <input id="ukInputName" class="uk-input" type="text" placeholder="e.g. Work Laptop, Cline, Cursor" required />
+                    <input id="ukInputName" class="uk-input" type="text" placeholder="e.g. Work Laptop, Cline, Cursor" required autocomplete="off" data-1p-ignore="" data-bwignore="" data-form-type="other" />
                   </div>
                   <div class="uk-form-field">
                     <label for="ukInputModel">Default Model Override (optional)</label>
-                    <input id="ukInputModel" class="uk-input" type="text" placeholder="e.g. claude-3-7-sonnet (or leave blank)" />
+                    <input id="ukInputModel" class="uk-input" type="text" placeholder="e.g. claude-3-7-sonnet (or leave blank)" autocomplete="off" data-1p-ignore="" data-bwignore="" data-form-type="other" />
                   </div>
                   <div class="uk-form-field">
                     <label for="ukInputRpm">Rate Limit (RPM)</label>
-                    <input id="ukInputRpm" class="uk-input" type="number" min="1" max="1000" value="60" />
+                    <input id="ukInputRpm" class="uk-input" type="number" min="1" max="1000" value="60" autocomplete="off" data-1p-ignore="" data-bwignore="" data-form-type="other" />
                   </div>
                   <div class="uk-form-field">
                     <label for="ukInputExpiry">Expires in (Days, optional)</label>
-                    <input id="ukInputExpiry" class="uk-input" type="number" min="1" max="3650" placeholder="Never" />
+                    <input id="ukInputExpiry" class="uk-input" type="number" min="1" max="3650" placeholder="Never" autocomplete="off" data-1p-ignore="" data-bwignore="" data-form-type="other" />
                   </div>
                   <button id="ukCreateBtn" class="primary-button" type="submit" style="height:38px;">Generate Universal Key</button>
                 </form>
@@ -349,7 +349,7 @@
 
                 <div class="pg-input-area">
                   <div class="pg-input-wrapper">
-                    <textarea id="pgPromptInput" class="pg-textarea" placeholder="Type a prompt to test model routing, failover, and latency... (Press Enter to send, Shift+Enter for new line)"></textarea>
+                    <textarea id="pgPromptInput" class="pg-textarea" placeholder="Type a prompt to test model routing, failover, and latency... (Press Enter to send, Shift+Enter for new line)" autocomplete="off" data-1p-ignore="" data-bwignore="" data-form-type="other"></textarea>
                     <button id="pgSendBtn" class="primary-button" type="button" style="height:44px; padding:0 20px;">Send Prompt</button>
                   </div>
                   <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:var(--muted);">

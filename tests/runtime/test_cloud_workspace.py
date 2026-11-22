@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from pathlib import Path
 import pytest
 
@@ -129,3 +130,86 @@ async def test_command_timeout(tmp_path, monkeypatch):
     assert "timed out after 0.5 seconds" in res["stderr"]
 
     cleanup_workspace(session_id)
+
+
+@pytest.mark.asyncio
+async def test_environment_sanitization_in_workspace(tmp_path, monkeypatch):
+    """Verify host secrets and API keys are scrubbed and not accessible in workspace execution."""
+    monkeypatch.setenv("FCC_WORKSPACES_DIR", str(tmp_path))
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "super_secret_supabase_admin_key")
+    monkeypatch.setenv("FCC_ENCRYPTION_KEY", "ultra_sensitive_encryption_key")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_prod_secret_123")
+
+    session_id = "test-session-env-scrub"
+    await prepare_workspace(session_id)
+
+    # Subprocess inspects its environment
+    cmd = f'"{sys.executable}" -c "import os; print(\'FCC_ENCRYPTION_KEY:\', os.getenv(\'FCC_ENCRYPTION_KEY\')); print(\'GROQ_API_KEY:\', os.getenv(\'GROQ_API_KEY\'))"'
+    res = await execute_command(session_id, cmd, timeout=10.0)
+
+    assert res["status"] == "completed"
+    assert "FCC_ENCRYPTION_KEY: None" in res["stdout"]
+    assert "GROQ_API_KEY: None" in res["stdout"]
+
+    cleanup_workspace(session_id)
+
+
+@pytest.mark.asyncio
+async def test_ssrf_metadata_blocked(tmp_path, monkeypatch):
+    """Verify attempts to reach cloud metadata IP 169.254.169.254 are rejected."""
+    monkeypatch.setenv("FCC_WORKSPACES_DIR", str(tmp_path))
+    session_id = "test-session-ssrf"
+    await prepare_workspace(session_id)
+
+    cmd = "curl -s http://169.254.169.254/latest/meta-data/"
+    res = await execute_command(session_id, cmd, timeout=5.0)
+
+    assert res["status"] == "blocked"
+    assert res["exit_code"] == 1
+    assert "169.254.169.254" in res["stderr"]
+
+    cleanup_workspace(session_id)
+
+
+@pytest.mark.asyncio
+async def test_command_cancellation(tmp_path, monkeypatch):
+    """Verify cancel_session_command terminates a running process."""
+    from free_claude_code.runtime.cloud_workspace import cancel_session_command
+
+    monkeypatch.setenv("FCC_WORKSPACES_DIR", str(tmp_path))
+    session_id = "test-session-cancel"
+    await prepare_workspace(session_id)
+
+    # Start long running task
+    cmd = f'"{sys.executable}" -c "import time; time.sleep(30)"'
+    task = asyncio.create_task(execute_command(session_id, cmd, timeout=35.0))
+    await asyncio.sleep(0.5)
+
+    cancelled = await cancel_session_command(session_id)
+    assert cancelled is True
+
+    res = await task
+    assert res["status"] in ("completed", "failed", "error")
+
+    cleanup_workspace(session_id)
+
+
+def test_cleanup_expired_workspaces(tmp_path, monkeypatch):
+    """Verify cleanup_expired_workspaces cleans up old folders."""
+    from free_claude_code.runtime.cloud_workspace import cleanup_expired_workspaces
+
+    monkeypatch.setenv("FCC_WORKSPACES_DIR", str(tmp_path))
+    old_dir = tmp_path / "old-session-123"
+    old_dir.mkdir()
+    # Set mtime to 48 hours ago
+    past_time = time.time() - (48 * 3600)
+    os.utime(str(old_dir), (past_time, past_time))
+
+    fresh_dir = tmp_path / "fresh-session-456"
+    fresh_dir.mkdir()
+
+    cleaned = cleanup_expired_workspaces(max_age_hours=24)
+    assert cleaned >= 1
+    assert not old_dir.exists()
+    assert fresh_dir.exists()
+

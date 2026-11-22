@@ -280,6 +280,17 @@ async def execute_session_command(
     )
 
 
+@router.post("/admin/api/code/sessions/{session_id}/cancel")
+async def cancel_command(
+    session_id: str,
+    services: ApiServices = Depends(get_services),
+) -> JsonObject:
+    from free_claude_code.runtime.cloud_workspace import cancel_session_command
+
+    cancelled = await cancel_session_command(session_id)
+    return {"session_id": session_id, "cancelled": cancelled}
+
+
 @router.get("/admin/api/code/sessions/{session_id}")
 async def detail(
     session_id: str,

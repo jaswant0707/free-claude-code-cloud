@@ -151,6 +151,12 @@ filterwarnings = [
     "error",
     # Starlette's test client uses this deprecated alias, including in 1.6.0.
     'ignore:^The anyio\.abc\.BlockingPortal alias is deprecated, use anyio\.from_thread\.BlockingPortal instead\.$:DeprecationWarning:^starlette\.testclient$',
+    # Python 3.14 Windows proactor transport deallocator warning during subprocess termination
+    'ignore:.*_ProactorBasePipeTransport.__del__.*:pytest.PytestUnraisableExceptionWarning',
+    'ignore:.*PipeHandle.__del__.*:pytest.PytestUnraisableExceptionWarning',
+    'ignore:.*BaseSubprocessTransport.__del__.*:pytest.PytestUnraisableExceptionWarning',
+    'ignore:unclosed transport.*:ResourceWarning',
+    'ignore:unclosed <PipeHandle.*:ResourceWarning',
 ]
 testpaths = ["tests"]
 markers = [

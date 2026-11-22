@@ -92,10 +92,11 @@ except Exception:
 
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
     async def _catch_all(request: Request, path: str = ""):
+        # In production environments, never expose full stack traces or filesystem paths to clients
         return HTMLResponse(
-            f"<!doctype html><html><head><title>FCC Cloud Startup Error</title></head><body>"
-            f"<h2>Free Claude Code Cloud — Initialization Error</h2>"
-            f"<pre style='background:#f4f4f4;padding:15px;border-radius:5px;border:1px solid #ccc;overflow-x:auto;'>{_err}</pre>"
-            f"</body></html>",
+            "<!doctype html><html><head><title>FCC Cloud Service Unavailable</title></head><body>"
+            "<h2>Free Claude Code Cloud — Service Initialization Error</h2>"
+            "<p>The application encountered an error during initialization. Please check cloud server logs for details.</p>"
+            "</body></html>",
             status_code=500,
         )
