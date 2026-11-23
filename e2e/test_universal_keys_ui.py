@@ -60,12 +60,30 @@ def test_universal_keys_dashboard_rendering(page: Page, admin_base_url: str):
     expect(page.locator("#ukCreateBtn")).to_be_visible()
 
     # SECTION D: Existing Keys Table
-    expect(page.locator(".uk-table")).to_be_visible()
+    expect(page.locator(".uk-table").first).to_be_visible()
     expect(page.locator("#ukTableBody")).to_be_visible()
+
+    # SECTION E: Supabase Database Status & Details
+    expect(page.locator(".uk-supabase-card")).to_be_visible()
+    expect(page.locator("#sbLiveStatusBadge")).to_be_visible()
+    expect(page.locator("#sbProjectRef")).to_contain_text("emlenqcewhlwtnigwkac")
+    expect(page.locator("#sbTablesGrid")).to_be_visible()
+
+    # SECTION F: Universal Keys Analytics & Graphs
+    expect(page.locator(".uk-analytics-card")).to_be_visible()
+    expect(page.locator("#ukKpiTotalReq")).to_be_visible()
+    expect(page.locator("#ukTimelineChart")).to_be_visible()
+    expect(page.locator("#ukModelDistChart")).to_be_visible()
+
+    # SECTION G: Universal Key Request Logs
+    expect(page.locator(".uk-logs-card")).to_be_visible()
+    expect(page.locator("#ukLogsKeyFilter")).to_be_visible()
+    expect(page.locator("#ukLogsTableBody")).to_be_visible()
 
 
 def test_universal_key_creation_and_deletion_in_browser(page: Page, admin_base_url: str):
     """Generate a key through the UI form and verify no TypeError is raised."""
+    page.on("dialog", lambda dialog: dialog.accept())
     page.goto(f"{admin_base_url}/admin/universal_keys")
 
     name_input = page.locator("#ukInputName")
@@ -90,7 +108,6 @@ def test_universal_key_creation_and_deletion_in_browser(page: Page, admin_base_u
     expect(table_body).to_contain_text("E2E Test Key")
 
     # Delete the created key
-    page.on("dialog", lambda dialog: dialog.accept())
     delete_btn = page.locator(".uk-delete-btn[data-name='E2E Test Key']").first
     if delete_btn.is_visible():
         delete_btn.click()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import codecs
 from time import monotonic
+from typing import Any
 
 from loguru import logger
 from starlette.datastructures import Headers
@@ -22,6 +23,51 @@ from free_claude_code.core.request_outcomes import (
 from .generation_paths import generation_api
 
 _FAILURE_EVENTS = frozenset({"error", "response.error", "response.failed"})
+
+
+async def _record_uk_audit_event(
+    uk: dict[str, Any],
+    path: str,
+    wire_api: str | None,
+    provider_id: str | None,
+    model: str | None,
+    status: str,
+    status_code: int | None,
+    duration_ms: float,
+    failure_reason: str | None,
+    client_ip: str | None,
+) -> None:
+    try:
+        from free_claude_code.persistence.supabase_client import get_supabase_client
+
+        client = get_supabase_client()
+        if not client.is_configured:
+            return
+
+        details = {
+            "key_id": str(uk.get("id", "")),
+            "key_name": uk.get("name"),
+            "key_prefix": uk.get("key_prefix"),
+            "endpoint": path,
+            "wire_api": wire_api,
+            "provider_id": provider_id,
+            "model": model or uk.get("default_model") or "free-claude-universal",
+            "status_code": status_code,
+            "duration_ms": duration_ms,
+            "failure_reason": failure_reason,
+        }
+        await client._rpc_async(
+            "fcc_record_audit_event",
+            {
+                "p_event_type": "universal_key.request",
+                "p_actor_email": uk.get("name") or uk.get("key_prefix"),
+                "p_ip_address": client_ip,
+                "p_status": status,
+                "p_details": details,
+            },
+        )
+    except Exception as exc:
+        logger.debug("Failed to record universal key audit event: {}", exc)
 
 
 def _observe_event(event: SSEEvent) -> None:
@@ -124,6 +170,7 @@ class RequestOutcomeMiddleware:
                 result, reason = "failure", "incomplete_response"
             else:
                 result = "success"
+            duration_ms = round((monotonic() - started) * 1000, 2)
             logger.bind(
                 event="request.completed",
                 wire_api=generation_api(scope["path"]),
@@ -131,6 +178,34 @@ class RequestOutcomeMiddleware:
                 model=outcome.model,
                 status_code=status_code,
                 outcome=result,
-                duration_ms=round((monotonic() - started) * 1000, 2),
+                duration_ms=duration_ms,
                 failure_reason=reason,
             ).info("Inference request {}", result)
+
+            state = scope.get("state")
+            if isinstance(state, dict):
+                uk = state.get("universal_key")
+                if uk and isinstance(uk, dict):
+                    headers = Headers(raw=scope.get("headers", []))
+                    client_ip = (
+                        headers.get("x-forwarded-for", "").split(",")[0].strip()
+                        or headers.get("x-real-ip", "").strip()
+                        or (scope.get("client") or [None])[0]
+                    )
+                    try:
+                        asyncio.create_task(
+                            _record_uk_audit_event(
+                                uk=uk,
+                                path=scope.get("path", ""),
+                                wire_api=generation_api(scope.get("path", "")),
+                                provider_id=outcome.provider_id,
+                                model=outcome.model,
+                                status=result,
+                                status_code=status_code,
+                                duration_ms=duration_ms,
+                                failure_reason=reason,
+                                client_ip=client_ip,
+                            )
+                        )
+                    except Exception:
+                        pass

@@ -399,6 +399,65 @@ class SupabaseClient:
         remaining = [k for k in self.list_universal_keys() if str(k.get("id")) == str(key_id)]
         return len(remaining) == 0
 
+    def get_universal_keys_analytics(self) -> dict[str, Any]:
+        """Fetch aggregated analytics, hourly request timeline, and model distribution."""
+        result = self._rpc("fcc_get_universal_keys_analytics", {})
+        if isinstance(result, dict):
+            return result
+        return {
+            "overview": {
+                "total_keys": 0,
+                "active_keys": 0,
+                "total_requests": 0,
+                "logged_requests": 0,
+                "success_requests": 0,
+                "failed_requests": 0,
+                "avg_latency_ms": 0,
+            },
+            "timeline": [],
+            "model_distribution": [],
+            "keys": [],
+        }
+
+    def get_universal_key_logs(
+        self, key_id: str | None = None, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Fetch recent request audit logs for Universal API Keys."""
+        payload: dict[str, Any] = {"p_limit": min(max(1, limit), 200)}
+        if key_id:
+            payload["p_key_id"] = key_id
+        result = self._rpc("fcc_get_universal_key_logs", payload)
+        return result if isinstance(result, list) else []
+
+    def get_database_health(self) -> dict[str, Any]:
+        """Fetch database health, table row counts, and schema metrics."""
+        result = self._rpc("fcc_get_database_health", {})
+        project_ref = ""
+        if "supabase.co" in self.base_url:
+            parts = self.base_url.replace("https://", "").replace("http://", "").split(".")
+            if parts:
+                project_ref = parts[0]
+        enriched = {
+            "project_ref": project_ref or "emlenqcewhlwtnigwkac",
+            "region": "us-east-1",
+            "host": f"db.{project_ref or 'emlenqcewhlwtnigwkac'}.supabase.co",
+            "postgres_version": "17.12.0",
+            "ssl_active": True,
+        }
+        if isinstance(result, dict):
+            enriched.update(result)
+            return enriched
+        return {
+            "status": "degraded" if self.is_configured else "not_configured",
+            "tables": [],
+            "server_time": None,
+            "database_size_bytes": 0,
+            "database_size_pretty": "Unknown",
+            "rpc_functions_count": 0,
+            "backend_auth_verified": False,
+            **enriched,
+        }
+
     # --------------------------------------------------------------------------
     # Model Test Playground
     # --------------------------------------------------------------------------

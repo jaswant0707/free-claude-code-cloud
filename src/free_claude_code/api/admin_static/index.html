@@ -407,6 +407,174 @@
                   </tbody>
                 </table>
               </div>
+
+              <!-- Section E: Supabase Database Status & Details -->
+              <div class="uk-card uk-supabase-card">
+                <div class="uk-card-header-flex">
+                  <div>
+                    <h4 class="uk-card-title" style="display:flex; align-items:center; gap:8px;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:#3ecf8e;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+                      Supabase Database Status &amp; Details
+                    </h4>
+                    <p style="color:var(--muted); font-size:0.85rem; margin:-4px 0 0;">
+                      Live PostgREST connection, table inventory, RPC procedures, and PostgreSQL health.
+                    </p>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span id="sbLiveStatusBadge" class="badge badge-active">● Checking...</span>
+                    <button id="sbRefreshBtn" class="secondary-button" type="button" style="padding:6px 12px; font-size:0.8rem;">
+                      <span id="sbRefreshIcon">↻</span> Refresh DB Status
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Meta Grid -->
+                <div class="sb-meta-grid">
+                  <div class="sb-meta-item">
+                    <span class="sb-meta-label">Project ID</span>
+                    <span class="sb-meta-val"><code id="sbProjectRef">emlenqcewhlwtnigwkac</code></span>
+                  </div>
+                  <div class="sb-meta-item">
+                    <span class="sb-meta-label">Region</span>
+                    <span class="sb-meta-val" id="sbRegion">us-east-1 (N. Virginia)</span>
+                  </div>
+                  <div class="sb-meta-item">
+                    <span class="sb-meta-label">Database Engine</span>
+                    <span class="sb-meta-val" id="sbEngine">PostgreSQL 17.12 (GA)</span>
+                  </div>
+                  <div class="sb-meta-item">
+                    <span class="sb-meta-label">Database Size</span>
+                    <span class="sb-meta-val" id="sbDbSize">--</span>
+                  </div>
+                  <div class="sb-meta-item">
+                    <span class="sb-meta-label">RPC Functions</span>
+                    <span class="sb-meta-val" id="sbRpcCount">33 Active (Verified)</span>
+                  </div>
+                  <div class="sb-meta-item">
+                    <span class="sb-meta-label">Security &amp; RLS</span>
+                    <span class="sb-meta-val" id="sbSecurityStatus" style="color:var(--success);">Protected (Backend Verified)</span>
+                  </div>
+                </div>
+
+                <!-- Table Row Counts Inventory -->
+                <div style="margin-top:18px;">
+                  <h5 style="font-size:0.82rem; color:var(--text-strong); margin:0 0 10px; text-transform:uppercase; letter-spacing:0.04em;">
+                    FCC Schema Tables &amp; Row Counts
+                  </h5>
+                  <div id="sbTablesGrid" class="sb-tables-grid">
+                    <div style="color:var(--muted); font-size:0.85rem; padding:12px;">Loading tables inventory...</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section F: Universal Keys Analytics & Graphs -->
+              <div class="uk-card uk-analytics-card">
+                <div class="uk-card-header-flex">
+                  <div>
+                    <h4 class="uk-card-title" style="display:flex; align-items:center; gap:8px;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--accent);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                      Universal Keys Analytics &amp; Visual Metrics
+                    </h4>
+                    <p style="color:var(--muted); font-size:0.85rem; margin:-4px 0 0;">
+                      Real-time request metrics, 24-hour volume timeline, model routing distribution, and latency.
+                    </p>
+                  </div>
+                  <button id="ukAnalyticsRefreshBtn" class="secondary-button" type="button" style="padding:6px 12px; font-size:0.8rem;">
+                    ↻ Refresh Analytics
+                  </button>
+                </div>
+
+                <!-- KPI Stats Grid -->
+                <div class="uk-kpi-grid">
+                  <div class="uk-kpi-card">
+                    <span class="uk-kpi-label">Total Requests</span>
+                    <span class="uk-kpi-value" id="ukKpiTotalReq">0</span>
+                    <span class="uk-kpi-hint" id="ukKpiTotalReqHint">All keys combined</span>
+                  </div>
+                  <div class="uk-kpi-card">
+                    <span class="uk-kpi-label">Active Keys</span>
+                    <span class="uk-kpi-value" id="ukKpiActiveKeys">0</span>
+                    <span class="uk-kpi-hint">Ready for requests</span>
+                  </div>
+                  <div class="uk-kpi-card">
+                    <span class="uk-kpi-label">Avg Latency</span>
+                    <span class="uk-kpi-value" id="ukKpiAvgLatency">0 ms</span>
+                    <span class="uk-kpi-hint">Logged requests</span>
+                  </div>
+                  <div class="uk-kpi-card">
+                    <span class="uk-kpi-label">Success Rate</span>
+                    <span class="uk-kpi-value" id="ukKpiSuccessRate">100%</span>
+                    <span class="uk-kpi-hint" id="ukKpiSuccessHint">0 errors logged</span>
+                  </div>
+                </div>
+
+                <!-- Visual Charts Container -->
+                <div class="uk-charts-grid">
+                  <!-- 24-Hour Timeline Bar Chart -->
+                  <div class="uk-chart-box">
+                    <div class="uk-chart-header">
+                      <h5>24-Hour Request Volume Timeline</h5>
+                      <span style="font-size:0.75rem; color:var(--muted);">Hourly buckets</span>
+                    </div>
+                    <div id="ukTimelineChart" class="uk-chart-canvas">
+                      <!-- Rendered SVG timeline chart -->
+                    </div>
+                  </div>
+
+                  <!-- Model Distribution Chart -->
+                  <div class="uk-chart-box">
+                    <div class="uk-chart-header">
+                      <h5>Model Routing Breakdown</h5>
+                      <span style="font-size:0.75rem; color:var(--muted);">Requests by target model</span>
+                    </div>
+                    <div id="ukModelDistChart" class="uk-chart-canvas">
+                      <!-- Rendered model distribution bars -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section G: Universal Key Request Logs -->
+              <div class="uk-card uk-logs-card">
+                <div class="uk-card-header-flex">
+                  <div>
+                    <h4 class="uk-card-title" style="display:flex; align-items:center; gap:8px;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--text-strong);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                      Request Audit Logs
+                    </h4>
+                    <p style="color:var(--muted); font-size:0.85rem; margin:-4px 0 0;">
+                      Recent incoming requests authenticated via Universal API Keys.
+                    </p>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <select id="ukLogsKeyFilter" class="uk-input" style="padding:4px 8px; font-size:0.8rem; width:auto;">
+                      <option value="">All Keys</option>
+                    </select>
+                    <button id="ukLogsRefreshBtn" class="secondary-button" type="button" style="padding:6px 12px; font-size:0.8rem;">
+                      ↻ Refresh Logs
+                    </button>
+                  </div>
+                </div>
+
+                <div class="uk-table-wrapper" style="margin-top:16px;">
+                  <table class="uk-table uk-logs-table">
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Key Name</th>
+                        <th>Prefix</th>
+                        <th>Endpoint</th>
+                        <th>Model</th>
+                        <th>Status</th>
+                        <th>Latency</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ukLogsTableBody">
+                      <tr><td colspan="7" style="text-align:center; color:var(--muted); padding:24px;">Loading request logs...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </section>
 

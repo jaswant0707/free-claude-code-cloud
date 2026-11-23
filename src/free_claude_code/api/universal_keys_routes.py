@@ -21,6 +21,9 @@ from .admin_security import require_loopback_admin
 
 router = APIRouter(dependencies=[Depends(require_loopback_admin)])
 
+# In-memory store for local environments without persistent Supabase database
+_LOCAL_KEYS_STORE: list[dict[str, Any]] = []
+
 
 class CreateUniversalKeyPayload(BaseModel):
     name: str = Field(min_length=1, max_length=100)
@@ -46,7 +49,7 @@ async def list_universal_keys(request: Request):
     """List all universal API keys with usage stats and metadata."""
     client = get_supabase_client()
     if not client.is_configured:
-        return {"keys": []}
+        return {"keys": list(_LOCAL_KEYS_STORE)}
     keys = client.list_universal_keys()
     return {"keys": keys}
 
@@ -61,9 +64,6 @@ async def create_universal_key_endpoint(
     The raw secret key is only returned in this response and cannot be retrieved again.
     """
     client = get_supabase_client()
-    if not client.is_configured:
-        raise HTTPException(status_code=503, detail="Database not configured")
-
     expires_at = payload.expires_at
     if not expires_at and payload.expires_in_days:
         expires_at = (
@@ -79,10 +79,27 @@ async def create_universal_key_endpoint(
     )
     record = result.get("record")
     if not record:
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to persist universal API key in database.",
-        )
+        if not client.is_configured:
+            # Fallback record for local / test environments without Supabase
+            record = {
+                "id": f"local-{result['key_hash'][:8]}",
+                "name": payload.name,
+                "key_prefix": result["key_prefix"],
+                "default_model": payload.default_model,
+                "fallback_models": payload.fallback_models,
+                "rate_limit_rpm": payload.rate_limit_rpm,
+                "is_active": True,
+                "total_requests": 0,
+                "last_used_at": None,
+                "expires_at": expires_at,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            _LOCAL_KEYS_STORE.append(record)
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to persist universal API key in database.",
+            )
 
     return {
         "status": "created",
@@ -155,10 +172,20 @@ async def toggle_universal_key_endpoint(
 ):
     """Enable or revoke an existing universal API key."""
     client = get_supabase_client()
-    if not client.is_configured:
-        raise HTTPException(status_code=503, detail="Database not configured")
-
     target_active = None
+
+    if not client.is_configured:
+        for k in _LOCAL_KEYS_STORE:
+            if str(k.get("id")) == str(key_id):
+                if payload and payload.is_active is not None:
+                    target_active = payload.is_active
+                else:
+                    target_active = not bool(k.get("is_active", True))
+                k["is_active"] = target_active
+                invalidate_universal_key_cache()
+                return {"status": "ok", "key_id": key_id, "is_active": target_active}
+        raise HTTPException(status_code=404, detail="Universal key not found")
+
     if payload and payload.is_active is not None:
         target_active = payload.is_active
     else:
@@ -187,7 +214,12 @@ async def delete_universal_key_endpoint(
     """Permanently delete a universal API key."""
     client = get_supabase_client()
     if not client.is_configured:
-        raise HTTPException(status_code=503, detail="Database not configured")
+        for i, k in enumerate(_LOCAL_KEYS_STORE):
+            if str(k.get("id")) == str(key_id):
+                _LOCAL_KEYS_STORE.pop(i)
+                invalidate_universal_key_cache()
+                return {"status": "deleted", "key_id": key_id}
+        raise HTTPException(status_code=404, detail="Universal key not found")
 
     success = client.delete_universal_key(key_id)
     if not success:
@@ -195,3 +227,48 @@ async def delete_universal_key_endpoint(
 
     invalidate_universal_key_cache()
     return {"status": "deleted", "key_id": key_id}
+
+
+@router.get("/admin/api/supabase/status")
+async def get_supabase_status_endpoint(request: Request):
+    """Retrieve live Supabase database health, table row counts, and schema metrics."""
+    client = get_supabase_client()
+    health = client.get_database_health()
+    return health
+
+
+@router.get("/admin/api/universal-keys/analytics")
+async def get_universal_keys_analytics_endpoint(request: Request):
+    """Retrieve aggregated Universal API Key usage statistics, hourly request timeline, and model distribution."""
+    client = get_supabase_client()
+    if not client.is_configured:
+        return {
+            "overview": {
+                "total_keys": 0,
+                "active_keys": 0,
+                "total_requests": 0,
+                "logged_requests": 0,
+                "success_requests": 0,
+                "failed_requests": 0,
+                "avg_latency_ms": 0,
+            },
+            "timeline": [],
+            "model_distribution": [],
+            "keys": [],
+        }
+    return client.get_universal_keys_analytics()
+
+
+@router.get("/admin/api/universal-keys/logs")
+async def get_universal_keys_logs_endpoint(
+    request: Request,
+    key_id: str | None = None,
+    limit: int = 50,
+):
+    """Retrieve recent request audit logs for Universal API Keys."""
+    client = get_supabase_client()
+    if not client.is_configured:
+        return {"logs": []}
+    logs = client.get_universal_key_logs(key_id=key_id, limit=limit)
+    return {"logs": logs}
+

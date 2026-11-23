@@ -494,4 +494,138 @@ def test_chat_completions_parsing_and_error_handling(uk_app):
         assert "messages" in r_no_msg.json()["error"]["message"]
 
 
+# ==============================================================================
+# 5. Supabase Database Status & Analytics Tests
+# ==============================================================================
+
+
+def test_supabase_database_status_endpoint(uk_app):
+    """GET /admin/api/supabase/status returns database health, project info, and table stats."""
+    client = TestClient(uk_app, base_url="https://cloud.example.com")
+    admin_headers = {"x-admin-token": ADMIN_TOKEN}
+
+    mock_client = MagicMock()
+    mock_client.is_configured = True
+    mock_client.get_database_health.return_value = {
+        "status": "healthy",
+        "project_ref": "emlenqcewhlwtnigwkac",
+        "region": "us-east-1",
+        "host": "db.emlenqcewhlwtnigwkac.supabase.co",
+        "postgres_version": "17.12.0",
+        "database_size_pretty": "11 MB",
+        "rpc_functions_count": 33,
+        "backend_auth_verified": True,
+        "tables": [
+            {"name": "fcc_universal_keys", "rows": 2, "size": "80 kB"},
+            {"name": "fcc_provider_configs", "rows": 6, "size": "64 kB"},
+            {"name": "fcc_audit_events", "rows": 68, "size": "96 kB"},
+        ],
+    }
+
+    with patch("free_claude_code.api.universal_keys_routes.get_supabase_client", return_value=mock_client):
+        # 1. Unauthenticated fails with 401
+        res_unauth = client.get("/admin/api/supabase/status")
+        assert res_unauth.status_code == 401
+
+        # 2. Authenticated succeeds with full status details
+        res_auth = client.get(
+            "/admin/api/supabase/status",
+            headers=admin_headers,
+        )
+        assert res_auth.status_code == 200
+        data = res_auth.json()
+        assert data["status"] == "healthy"
+        assert data["project_ref"] == "emlenqcewhlwtnigwkac"
+        assert data["rpc_functions_count"] == 33
+        assert len(data["tables"]) == 3
+        assert data["tables"][0]["name"] == "fcc_universal_keys"
+
+
+def test_universal_keys_analytics_endpoint(uk_app):
+    """GET /admin/api/universal-keys/analytics returns aggregate stats, timeline, and distribution."""
+    client = TestClient(uk_app, base_url="https://cloud.example.com")
+    admin_headers = {"x-admin-token": ADMIN_TOKEN}
+
+    mock_client = MagicMock()
+    mock_client.is_configured = True
+    mock_client.get_universal_keys_analytics.return_value = {
+        "overview": {
+            "total_keys": 2,
+            "active_keys": 2,
+            "total_requests": 16,
+            "logged_requests": 16,
+            "success_requests": 16,
+            "failed_requests": 0,
+            "avg_latency_ms": 245.5,
+        },
+        "timeline": [
+            {"time": "14:00", "requests": 5, "errors": 0},
+            {"time": "15:00", "requests": 11, "errors": 0},
+        ],
+        "model_distribution": [
+            {"model": "free-claude-universal", "count": 16},
+        ],
+        "keys": [
+            {"id": "k1", "name": "claw", "total_requests": 12},
+            {"id": "k2", "name": "hello", "total_requests": 4},
+        ],
+    }
+
+    with patch("free_claude_code.api.universal_keys_routes.get_supabase_client", return_value=mock_client):
+        # Unauthenticated fails
+        assert client.get("/admin/api/universal-keys/analytics").status_code == 401
+
+        # Authenticated succeeds
+        res = client.get(
+            "/admin/api/universal-keys/analytics",
+            headers=admin_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["overview"]["total_requests"] == 16
+        assert data["overview"]["avg_latency_ms"] == 245.5
+        assert len(data["timeline"]) == 2
+        assert len(data["model_distribution"]) == 1
+        assert data["model_distribution"][0]["model"] == "free-claude-universal"
+
+
+def test_universal_keys_logs_endpoint(uk_app):
+    """GET /admin/api/universal-keys/logs returns filtered or recent audit events."""
+    client = TestClient(uk_app, base_url="https://cloud.example.com")
+    admin_headers = {"x-admin-token": ADMIN_TOKEN}
+
+    mock_client = MagicMock()
+    mock_client.is_configured = True
+    mock_client.get_universal_key_logs.return_value = [
+        {
+            "id": "log-1",
+            "created_at": "2026-11-23T14:51:15Z",
+            "key_name": "claw",
+            "key_prefix": "fcc_uk_137e34e...",
+            "endpoint": "/v1/chat/completions",
+            "model": "free-claude-universal",
+            "status": "success",
+            "status_code": 200,
+            "duration_ms": 230.4,
+        }
+    ]
+
+    with patch("free_claude_code.api.universal_keys_routes.get_supabase_client", return_value=mock_client):
+        # Unauthenticated fails
+        assert client.get("/admin/api/universal-keys/logs").status_code == 401
+
+        # Authenticated succeeds
+        res = client.get(
+            "/admin/api/universal-keys/logs?limit=10",
+            headers=admin_headers,
+        )
+        assert res.status_code == 200
+        logs = res.json()["logs"]
+        assert len(logs) == 1
+        assert logs[0]["key_name"] == "claw"
+        assert logs[0]["status_code"] == 200
+        assert mock_client.get_universal_key_logs.called
+
+
+
 
