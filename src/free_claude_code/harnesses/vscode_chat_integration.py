@@ -22,6 +22,7 @@ from free_claude_code.harnesses.config_file import (
     atomic_write_text,
     decode_json,
     ensure_private_permissions,
+    read_config_text,
 )
 from free_claude_code.harnesses.model_policy import (
     DEFAULT_REASONING_LEVEL,
@@ -63,8 +64,8 @@ def model_entry(model: CatalogModel, proxy_root_url: str) -> JsonObject:
 
 def _read(path: Path) -> tuple[list[JsonObject], JsonObject | None]:
     try:
-        source = path.read_text(encoding="utf-8-sig")
-    except FileNotFoundError:
+        source = read_config_text(path, encoding="utf-8-sig")
+    except (FileNotFoundError, OSError):
         return [], None
     document = decode_json(source)
     if not isinstance(document, list) or any(not isinstance(g, dict) for g in document):

@@ -2228,9 +2228,8 @@ const codexIntegrationPath = "/admin/api/integrations/codex";
 
 function renderCodexIntegration() {
   const { connected, paths } = codexIntegration;
-  const initializing = connected === false && state.startup?.startup?.catalog_file === "starting";
+  const busy = codexIntegration.busy || integrationUpdating(codexIntegration, "codex");
   const unavailable = connected === false && state.startup?.startup?.catalog_file === "failed";
-  const busy = codexIntegration.busy || initializing || integrationUpdating(codexIntegration, "codex");
   const catalogError = "Could not prepare the Codex model catalog. Refresh models to retry.";
   if (unavailable) integrationMessage("codexIntegrationMessage", catalogError, true);
   else if (byId("codexIntegrationMessage").textContent === catalogError) integrationMessage("codexIntegrationMessage", "");
@@ -2239,7 +2238,7 @@ function renderCodexIntegration() {
   byId("openCodexIntegration").disabled = busy;
   byId("openCodexIntegration").setAttribute("aria-busy", String(busy));
   byId("confirmCodexIntegration").textContent = busy ? "Saving…" : action;
-  byId("confirmCodexIntegration").disabled = busy || connected === null || unavailable;
+  byId("confirmCodexIntegration").disabled = busy || connected === null;
   byId("openCodexIntegration").className = connected && !busy ? "danger-button" : "primary-button";
   byId("confirmCodexIntegration").className = connected ? "danger-button" : "primary-button";
   byId("codexIntegrationDescription").textContent = connected

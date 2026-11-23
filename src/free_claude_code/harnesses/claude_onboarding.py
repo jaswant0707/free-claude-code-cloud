@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import cast
 
 from free_claude_code.core.json_types import JsonObject
-from free_claude_code.harnesses.config_file import atomic_write_text, decode_json
+from free_claude_code.harnesses.config_file import (
+    atomic_write_text,
+    decode_json,
+    read_config_text,
+)
 
 _ONBOARDING = "hasCompletedOnboarding"
 
@@ -18,8 +22,8 @@ def state_path() -> Path:
 
 def _read(path: Path) -> JsonObject:
     try:
-        source = path.read_text(encoding="utf-8-sig")
-    except FileNotFoundError:
+        source = read_config_text(path, encoding="utf-8-sig")
+    except (FileNotFoundError, OSError):
         return {}
     document = decode_json(source)
     if not isinstance(document, dict):

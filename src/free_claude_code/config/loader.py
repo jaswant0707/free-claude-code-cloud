@@ -155,6 +155,10 @@ class ManagedConfigStore:
                     managed[k] = v
                     os.environ[k] = v
                     updated = True
+                elif not v and k in managed:
+                    del managed[k]
+                    os.environ.pop(k, None)
+                    updated = True
 
             if updated and managed:
                 atomic_write_managed_config(managed, path=self.path)
@@ -179,6 +183,28 @@ class ManagedConfigStore:
                 if p.credential_env
             }
 
+            supported_app_settings = {
+                "MODEL",
+                "MODEL_FABLE",
+                "MODEL_OPUS",
+                "MODEL_SONNET",
+                "MODEL_HAIKU",
+                "MODEL_FALLBACKS",
+                "REASONING_POLICY",
+                "REASONING_FABLE",
+                "REASONING_OPUS",
+                "REASONING_SONNET",
+                "REASONING_HAIKU",
+                "DEFAULT_REASONING_EFFORT",
+                "PROVIDER_RATE_LIMIT",
+                "PROVIDER_RATE_WINDOW",
+                "PROXY_AUTH_ENABLED",
+                "ANTHROPIC_AUTH_TOKEN",
+                "PROXY_AUTH_TOKEN",
+                "WEB_SEARCH_ENABLED",
+                "WEB_FETCH_ENABLED",
+            }
+
             for key, val in values.items():
                 if key in env_to_provider:
                     pid, name = env_to_provider[key]
@@ -192,16 +218,9 @@ class ManagedConfigStore:
                         )
                     else:
                         client.delete_provider_config(pid)
-                elif key in (
-                    "MODEL",
-                    "MODEL_FALLBACKS",
-                    "DEFAULT_REASONING_EFFORT",
-                    "PROVIDER_RATE_LIMIT",
-                    "PROXY_AUTH_ENABLED",
-                    "ANTHROPIC_AUTH_TOKEN",
-                    "PROXY_AUTH_TOKEN",
-                ):
-                    client.upsert_app_setting(key, val)
+                elif key in supported_app_settings:
+                    clean_val = val.strip() if val is not None else ""
+                    client.upsert_app_setting(key, clean_val)
         except Exception as exc:
             logger.warning("Failed to sync managed config to Supabase: {}", exc)
 

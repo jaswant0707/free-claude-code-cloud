@@ -17,7 +17,10 @@ from free_claude_code.harnesses.codex import (
     PRINT_PROXY_AUTH_TOKEN_FLAG,
     codex_config_values,
 )
-from free_claude_code.harnesses.config_file import atomic_write_text
+from free_claude_code.harnesses.config_file import (
+    atomic_write_text,
+    read_config_text,
+)
 
 
 def config_path() -> Path:
@@ -48,8 +51,8 @@ def _child_table(
 
 def _read(path: Path) -> TOMLDocument:
     try:
-        content = path.read_text(encoding="utf-8-sig")
-    except FileNotFoundError:
+        content = read_config_text(path, encoding="utf-8-sig")
+    except (FileNotFoundError, OSError):
         return tomlkit.document()
     try:
         document = tomlkit.parse(content)

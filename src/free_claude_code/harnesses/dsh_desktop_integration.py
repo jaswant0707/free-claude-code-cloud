@@ -13,6 +13,10 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from free_claude_code.application.model_catalog import ModelCatalog
 from free_claude_code.core.json_types import JsonObject
 from free_claude_code.harnesses import dsh_files
+from free_claude_code.harnesses.config_file import (
+    atomic_write_text,
+    is_cloud_environment,
+)
 from free_claude_code.harnesses.dsh_config import DSH_PROVIDER_ID, build_dsh_provider
 from free_claude_code.harnesses.dsh_files import DshConfigError, mapping
 
@@ -145,9 +149,19 @@ def configure(
         if only_existing and not has_provider(home):
             return {"connected": False, "changed": False, "paths": _paths(home)}
         if not (home / "profiles/desktop/package.json").is_file():
-            raise DshConfigError(
-                "Install and open DeepSeek Harness Desktop once, then retry Connect."
-            )
+            if is_cloud_environment() or not (home / "profiles/desktop").exists():
+                profile_dir = home / "profiles/desktop"
+                profile_dir.mkdir(parents=True, exist_ok=True)
+                pkg = profile_dir / "package.json"
+                if not pkg.is_file():
+                    atomic_write_text(
+                        pkg,
+                        '{\n  "dsh": {\n    "profile": {\n      "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"]\n    }\n  }\n}\n',
+                    )
+            else:
+                raise DshConfigError(
+                    "Install and open DeepSeek Harness Desktop once, then retry Connect."
+                )
         rows, credentials = _read(home)
         provider = _provider(catalog, proxy_root_url)
         for config in _configs(rows, "llm-pi-ai", create=True):

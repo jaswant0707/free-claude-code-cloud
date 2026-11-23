@@ -107,18 +107,28 @@ def require_proxy_auth(
     if not is_proxy_auth_required(settings):
         return
 
-    token, had_bearer = _extract_proxy_credential(request)
-    if not token:
+    authorization = request.headers.get("authorization")
+    if authorization is None:
+        # Also check direct universal key in authorization or api-key header for convenience
+        token, had_bearer = _extract_proxy_credential(request)
+        if token and token.startswith("fcc_uk_"):
+            if _validate_proxy_token(
+                token,
+                settings.proxy_auth_token,
+                require_bearer=False,
+                had_bearer=had_bearer,
+                request=request,
+            ):
+                return
         raise HTTPException(
             status_code=401,
             detail="Missing proxy authentication token",
         )
 
-    if not _validate_proxy_token(
-        token,
+    if not _proxy_token_matches(
+        authorization,
         settings.proxy_auth_token,
-        require_bearer=False if token.startswith("fcc_uk_") else True,
-        had_bearer=had_bearer,
+        require_bearer=True,
         request=request,
     ):
         raise HTTPException(
@@ -135,18 +145,31 @@ def require_anthropic_proxy_auth(
     if not is_proxy_auth_required(settings):
         return
 
-    token, had_bearer = _extract_proxy_credential(request)
-    if not token:
+    authorization = request.headers.get("authorization")
+    if authorization is not None:
+        if _proxy_token_matches(
+            authorization,
+            settings.proxy_auth_token,
+            require_bearer=True,
+            request=request,
+        ):
+            return
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid proxy authentication token",
+        )
+
+    x_api_key = request.headers.get("x-api-key")
+    if x_api_key is None:
         raise HTTPException(
             status_code=401,
             detail="Missing proxy authentication token",
         )
 
-    if not _validate_proxy_token(
-        token,
+    if not _proxy_token_matches(
+        x_api_key,
         settings.proxy_auth_token,
         require_bearer=False,
-        had_bearer=had_bearer,
         request=request,
     ):
         raise HTTPException(

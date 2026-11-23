@@ -41,7 +41,12 @@ def profile_environment(source: Mapping[str, str] | None = None) -> dict[str, st
 
 
 async def verified_cli_path(env: Mapping[str, str]) -> str:
-    path = shutil.which("copilot", path=env.get("PATH"))
+    path = None
+    for candidate in ("copilot", "github-copilot-cli", "copilot.cmd", "copilot.exe"):
+        found = shutil.which(candidate, path=env.get("PATH"))
+        if found:
+            path = found
+            break
     if path is None:
         raise CopilotUnavailable(
             f"Install GitHub Copilot CLI {COPILOT_CLI_VERSION}, then connect again."

@@ -121,6 +121,48 @@ async def bootstrap(services: ApiServices = Depends(get_services)) -> JsonObject
         message = None
 
     catalog = code.catalog()
+    models_list = [model.model_dump(mode="json") for model in catalog.models]
+    if not models_list:
+        try:
+            from free_claude_code.application.model_catalog import read_model_catalog
+            req_catalog = read_model_catalog(services.requests)
+            for m in req_catalog.models:
+                try:
+                    pid, mname = split_provider_model_ref(m.provider_model_ref)
+                except ValueError:
+                    pid, mname = "fcc", m.provider_model_ref
+                models_list.append({
+                    "id": m.provider_model_ref,
+                    "display_name": m.display_name,
+                    "provider_id": pid,
+                    "model_name": mname,
+                    "reasoning_efforts": ("off",),
+                    "default_reasoning_effort": "off",
+                    "context_window_tokens": m.context_window_tokens or 128000,
+                })
+        except Exception:
+            pass
+
+    if not models_list:
+        fallback_models = [
+            ("free-claude-universal", "Universal Fast & Smart Routing", "universal", "free-claude-universal"),
+            ("groq/llama-3.3-70b-versatile", "Groq / Llama 3.3 70B", "groq", "llama-3.3-70b-versatile"),
+            ("open_router/anthropic/claude-3.5-sonnet", "OpenRouter / Claude 3.5 Sonnet", "open_router", "anthropic/claude-3.5-sonnet"),
+            ("openai_api/gpt-4o", "OpenAI / GPT-4o", "openai_api", "gpt-4o"),
+            ("gemini/gemini-2.0-flash", "Gemini 2.0 Flash", "gemini", "gemini-2.0-flash"),
+            ("deepseek/deepseek-chat", "DeepSeek Chat (V3)", "deepseek", "deepseek-chat"),
+        ]
+        for mid, dname, pid, mname in fallback_models:
+            models_list.append({
+                "id": mid,
+                "display_name": dname,
+                "provider_id": pid,
+                "model_name": mname,
+                "reasoning_efforts": ("off",),
+                "default_reasoning_effort": "off",
+                "context_window_tokens": 128000,
+            })
+
     return {
         "available": available,
         "message": message,
@@ -128,8 +170,8 @@ async def bootstrap(services: ApiServices = Depends(get_services)) -> JsonObject
         "startup": services.requests.catalog_status(),
         "harnesses": [{"id": "codex", "name": "Codex"}],
         "epoch": code.epoch,
-        "models": [model.model_dump(mode="json") for model in catalog.models],
-        "default_model": catalog.default_model,
+        "models": models_list,
+        "default_model": catalog.default_model or "free-claude-universal",
     }
 
 
@@ -330,6 +372,9 @@ async def poll_events(
     }
 
 
+_hydrated_cloud_sessions: bool = False
+
+
 @router.get("/admin/api/code/sessions")
 async def list_sessions(
     cursor: str | None = None,
@@ -346,18 +391,29 @@ async def list_sessions(
         except Exception:
             pass
 
-    # Hydrate any persistent cloud sessions from Supabase (in cloud/runtime mode, skip during unit tests)
-    if not os.getenv("PYTEST_CURRENT_TEST"):
+    global _hydrated_cloud_sessions
+    # Hydrate any persistent cloud sessions from Supabase once (in cloud/runtime mode, skip during unit tests)
+    if not _hydrated_cloud_sessions and not os.getenv("PYTEST_CURRENT_TEST"):
         try:
             from free_claude_code.persistence.supabase_client import get_supabase_client
             client = get_supabase_client()
             if client.is_configured:
-                cloud_sessions = client.list_code_sessions("jaswanty132@gmail.com")
+                session_owner = "jaswanty132@gmail.com"
+                if request is not None:
+                    try:
+                        from free_claude_code.api.owner_auth import extract_session_from_request
+                        sinfo = extract_session_from_request(request)
+                        if sinfo and sinfo.get("email"):
+                            session_owner = sinfo["email"]
+                    except Exception:
+                        pass
+                cloud_sessions = client.list_code_sessions(session_owner)
                 for cs in cloud_sessions:
                     try:
                         await code.create_session(cs["id"], cs["workspace_dir"])
                     except Exception:
                         pass
+                _hydrated_cloud_sessions = True
         except Exception:
             pass
 

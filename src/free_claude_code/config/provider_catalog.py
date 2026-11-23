@@ -192,7 +192,7 @@ PROVIDER_CATALOG: dict[str, ProviderDescriptor] = {
     ),
     "openai": ProviderDescriptor(
         provider_id="openai",
-        display_name="OpenAI / ChatGPT",
+        display_name="OpenAI / ChatGPT (OAuth)",
         website_url="https://openai.com/",
         logo_filename="openai.svg",
         auth_kind=ProviderAuthKind.CONNECTED_ACCOUNT,
@@ -201,7 +201,7 @@ PROVIDER_CATALOG: dict[str, ProviderDescriptor] = {
     ),
     "openai_api": ProviderDescriptor(
         provider_id="openai_api",
-        display_name="OpenAI API",
+        display_name="OpenAI API (API Key)",
         website_url="https://platform.openai.com/",
         logo_filename="openai.svg",
         credential_env="OPENAI_API_KEY",

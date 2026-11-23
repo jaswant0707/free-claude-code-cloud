@@ -45,16 +45,93 @@ def ensure_private_permissions(path: Path) -> None:
         path.chmod(0o600)
 
 
-def atomic_write_text(path: Path, content: str, *, private: bool = False) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def backup_config(path: Path) -> Path | None:
+    """Create a .bak copy of an existing configuration file before modifying it."""
+    try:
+        if path.is_file():
+            backup_path = path.with_suffix(path.suffix + ".bak")
+            backup_path.write_bytes(path.read_bytes())
+            return backup_path
+    except OSError:
+        pass
+    return None
+
+
+def is_cloud_environment() -> bool:
+    """Detect whether FCC is executing in a serverless or cloud container environment."""
+    return (
+        os.getenv("FCC_CLOUD_DEPLOYMENT", "").lower() in ("1", "true", "yes")
+        or os.getenv("ENABLE_CLOUD_ADMIN", "").lower() in ("1", "true", "yes")
+        or bool(os.getenv("VERCEL"))
+        or bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+    )
+
+
+def get_fallback_path(path: Path) -> Path:
+    """Return a writable mirror path in temp directory for read-only cloud filesystems."""
+    return Path(tempfile.gettempdir()) / "fcc_configs" / path.name
+
+
+def read_config_text(path: Path, encoding: str = "utf-8") -> str:
+    """Read configuration text from path, falling back to temp mirror in cloud mode."""
+    try:
+        return path.read_text(encoding=encoding)
+    except (FileNotFoundError, OSError):
+        if is_cloud_environment():
+            fallback = get_fallback_path(path)
+            if fallback != path and fallback.is_file():
+                return fallback.read_text(encoding=encoding)
+        raise FileNotFoundError(f"Config file not found: {path}")
+
+
+def delete_config(path: Path) -> bool:
+    """Safely unlink path and any temp fallback copy without raising OSError."""
+    deleted = False
+    try:
+        if path.is_file():
+            path.unlink()
+            deleted = True
+    except OSError:
+        pass
+    if is_cloud_environment():
+        try:
+            fallback = get_fallback_path(path)
+            if fallback != path and fallback.is_file():
+                fallback.unlink()
+                deleted = True
+        except OSError:
+            pass
+    return deleted
+
+
+def atomic_write_text(
+    path: Path,
+    content: str,
+    *,
+    private: bool = False,
+    backup: bool = False,
+    **kwargs: object,
+) -> None:
+    if backup and not os.getenv("PYTEST_CURRENT_TEST"):
+        backup_config(path)
+    target = path
+    if is_cloud_environment():
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            target = get_fallback_path(path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        target.parent.mkdir(parents=True, exist_ok=True)
+
     temporary: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
             newline="\n",
-            dir=path.parent,
-            prefix=f".{path.name}.",
+            dir=target.parent,
+            prefix=f".{target.name}.",
             suffix=".tmp",
             delete=False,
         ) as output:
@@ -64,9 +141,9 @@ def atomic_write_text(path: Path, content: str, *, private: bool = False) -> Non
             os.fsync(output.fileno())
         if private and os.name != "nt":
             ensure_private_permissions(temporary)
-        elif path.exists():
-            temporary.chmod(stat.S_IMODE(path.stat().st_mode))
-        temporary.replace(path)
+        elif target.exists():
+            temporary.chmod(stat.S_IMODE(target.stat().st_mode))
+        temporary.replace(target)
     finally:
         if temporary is not None and temporary.exists():
             # Windows cannot delete a temporary file after copying a read-only mode.

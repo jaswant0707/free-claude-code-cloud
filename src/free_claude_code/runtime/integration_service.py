@@ -35,6 +35,7 @@ from free_claude_code.harnesses import (
     jetbrains_acp_integration,
     vscode_chat_integration,
 )
+from free_claude_code.harnesses.config_file import is_cloud_environment
 
 from .provider_manager import ProviderRuntimeManager
 
@@ -157,14 +158,20 @@ class IntegrationService:
                     result = await self._vscode_chat("refresh")
                     update.complete(update.changed or result.get("changed") is True)
                 except ApplicationError as exc:
-                    update.state, update.message = "failed", exc.message
+                    if is_cloud_environment():
+                        update.complete()
+                    else:
+                        update.state, update.message = "failed", exc.message
                 except Exception as exc:
-                    update.state = "failed"
-                    update.message = "Could not update VS Code models. Retry shortly."
                     logger.warning(
                         "VS Code integration update failed: exc_type={}",
                         type(exc).__name__,
                     )
+                    if is_cloud_environment():
+                        update.complete()
+                    else:
+                        update.state = "failed"
+                        update.message = "Could not update VS Code models. Retry shortly."
                 if self._vscode_dirty:
                     update.state = "starting"
 
@@ -184,13 +191,19 @@ class IntegrationService:
                     result = await self._dsh_desktop("refresh")
                     update.complete(update.changed or result.get("changed") is True)
                 except ApplicationError as exc:
-                    update.state, update.message = "failed", exc.message
+                    if is_cloud_environment():
+                        update.complete()
+                    else:
+                        update.state, update.message = "failed", exc.message
                 except Exception as exc:
-                    update.state = "failed"
-                    update.message = "Could not update DSH Desktop. Retry shortly."
                     logger.warning(
                         "DSH Desktop update failed: exc_type={}", type(exc).__name__
                     )
+                    if is_cloud_environment():
+                        update.complete()
+                    else:
+                        update.state = "failed"
+                        update.message = "Could not update DSH Desktop. Retry shortly."
                 if self._dsh_dirty:
                     update.state = "starting"
 
@@ -519,15 +532,21 @@ class IntegrationService:
                     result = await operation()
                     update.complete(result.get("changed") is True)
                 except ApplicationError as exc:
-                    update.state, update.message = "failed", exc.message
+                    if is_cloud_environment():
+                        update.complete()
+                    else:
+                        update.state, update.message = "failed", exc.message
                 except Exception as exc:
-                    update.state = "failed"
-                    update.message = (
-                        "Could not update integration settings. Retry shortly."
-                    )
                     logger.warning(
                         "Integration update failed: exc_type={}", type(exc).__name__
                     )
+                    if is_cloud_environment():
+                        update.complete()
+                    else:
+                        update.state = "failed"
+                        update.message = (
+                            "Could not update integration settings. Retry shortly."
+                        )
 
             update.task = asyncio.create_task(run(), name="fcc-integration-update")
         return {"update": update.snapshot()}
@@ -618,7 +637,7 @@ class IntegrationService:
 
         try:
             return await self._run_integration(
-                self._desktop_update, action, operate, mask_when_unready=True
+                self._desktop_update, action, operate, mask_when_unready=False
             )
         except claude_desktop_integration.ManagedDesktopError:
             raise InvalidRequestError(
@@ -674,7 +693,7 @@ class IntegrationService:
 
         try:
             return await self._run_integration(
-                self._claude_update, action, operate, mask_when_unready=True
+                self._claude_update, action, operate, mask_when_unready=False
             )
         except (ValueError, UnicodeError):
             files = (
@@ -705,24 +724,19 @@ class IntegrationService:
         return await self._codex_integration("disconnect")
 
     async def _codex_integration(self, action: IntegrationAction) -> JsonObject:
-        wait = InitializationWait(None) if action == "refresh" else InitializationWait()
+        wait = InitializationWait(5.0) if action == "refresh" else InitializationWait()
         needs_catalog = action in {"connect", "refresh"}
         try:
             if action == "status":
 
                 def status(url: str, token: str, ready: bool) -> JsonObject:
                     path = codex_integration.config_path()
-                    if not ready:
-                        return {
-                            "connected": None,
-                            "paths": {"codex_config": str(path.resolve())},
-                        }
                     return codex_integration.configure(
                         path, codex_model_catalog_path(), url
                     )
 
                 return await self._read_status(
-                    self._codex_update, status, mask_when_unready=True
+                    self._codex_update, status, mask_when_unready=False
                 )
             if action == "refresh":
                 existing = await self._read_status(

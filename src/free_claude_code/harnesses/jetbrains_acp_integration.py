@@ -13,7 +13,12 @@ from typing import cast
 
 from free_claude_code.core.json_types import JsonObject
 from free_claude_code.harnesses.claude import claude_proxy_values
-from free_claude_code.harnesses.config_file import atomic_write_text, decode_json
+from free_claude_code.harnesses.config_file import (
+    atomic_write_text,
+    decode_json,
+    is_cloud_environment,
+    read_config_text,
+)
 
 _NAME = "Claude Code (FCC)"
 _MARKER = "FCC_JETBRAINS_ACP"
@@ -68,8 +73,8 @@ def _object(value: object) -> JsonObject:
 
 def _read(path: Path) -> JsonObject:
     try:
-        source = path.read_text(encoding="utf-8-sig")
-    except FileNotFoundError:
+        source = read_config_text(path, encoding="utf-8-sig")
+    except (FileNotFoundError, OSError):
         return {}
     value = _object(decode_json(source))
     return value
@@ -150,6 +155,9 @@ def _launch(previous: JsonObject) -> tuple[str, list[str]]:
         if package_spec != f"{_PACKAGE}@{version}":
             raise SetupError(_MISSING)
     except (KeyError, ValueError):
+        if is_cloud_environment():
+            node_cmd = shutil.which("node") or "node"
+            return node_cmd, ["npx", "-y", f"{_PACKAGE}@latest", "--hide-claude-auth"]
         raise SetupError(_MISSING) from None
     previous_args = previous.get("args")
     old_bin = (
@@ -191,6 +199,9 @@ def _launch(previous: JsonObject) -> tuple[str, list[str]]:
                 return str(node), [str(script), "--hide-claude-auth"]
         except (KeyError, ValueError, OSError):
             continue
+    if is_cloud_environment():
+        node_cmd = shutil.which("node") or "node"
+        return node_cmd, ["npx", "-y", f"{_PACKAGE}@latest", "--hide-claude-auth"]
     raise SetupError(_MISSING)
 
 

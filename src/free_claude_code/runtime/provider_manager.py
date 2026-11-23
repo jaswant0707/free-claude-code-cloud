@@ -47,6 +47,7 @@ ConnectedProviderIds = Callable[[], tuple[str, ...]]
 CommitConfig = Callable[[], Awaitable[None]]
 
 LOCAL_DISCOVERY_TIMEOUT_SECONDS = 5.0
+REMOTE_DISCOVERY_TIMEOUT_SECONDS = 10.0
 
 
 class ModelCatalogPublisher(Protocol):
@@ -311,7 +312,7 @@ class ProviderRuntimeManager:
             timeout = (
                 LOCAL_DISCOVERY_TIMEOUT_SECONDS
                 if descriptor is not None and descriptor.local
-                else None
+                else REMOTE_DISCOVERY_TIMEOUT_SECONDS
             )
             with quiet_discovery_recovery_logs(
                 is_optional_local_provider(generation.settings, provider_id)

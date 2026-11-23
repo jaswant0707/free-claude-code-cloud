@@ -2,7 +2,22 @@
   "use strict";
   const UI = window.SessionUI;
   const modelComboboxes = new Set();
-  let providerNames = new Map();
+  const DEFAULT_PROVIDER_NAMES = new Map([
+    ["universal", "Universal Routing"],
+    ["openai", "OpenAI / ChatGPT (OAuth)"],
+    ["openai_api", "OpenAI API"],
+    ["anthropic", "Anthropic"],
+    ["gemini", "Google Gemini"],
+    ["groq", "Groq"],
+    ["openrouter", "OpenRouter"],
+    ["open_router", "OpenRouter"],
+    ["deepseek", "DeepSeek"],
+    ["mistral", "Mistral"],
+    ["github_copilot", "GitHub Copilot"],
+    ["nvidia_nim", "NVIDIA NIM"],
+    ["fcc", "Free Claude Code"],
+  ]);
+  let providerNames = new Map(DEFAULT_PROVIDER_NAMES);
   let modelControl,
     reasoningControl,
     providerControl,
@@ -509,6 +524,12 @@
     source.addEventListener("feed.ready", (event) => {
       if (feed === source) void synchronize(JSON.parse(event.data));
     });
+    setTimeout(() => {
+      if (feed === source && !synchronized) {
+        void bootstrap();
+        void list();
+      }
+    }, 2500);
     for (const type of [
       "session.updated",
       "session.deleted",
@@ -526,6 +547,7 @@
       // A stopped store cannot open its event feed. Read its availability
       // so that the retry screen can explain why it is unavailable.
       void bootstrap();
+      void list();
     };
     source.addEventListener("feed.resync_required", disconnected);
     source.onopen = () => {
@@ -1328,21 +1350,28 @@
       pending(record) ||
       settingsPending;
     const disabled = sessionDisabled || !catalogLoaded || !catalog.length;
-    const provider =
+    let provider =
       providerDraft?.provider || record?.session?.provider_id || "";
+    const providers = [...new Set(catalog.map((model) => model.provider_id))];
+    if (provider && !providers.includes(provider)) providers.push(provider);
+    if (!provider && providers.length) {
+      provider = providers[0];
+    }
     if (modelControl.group.dataset.provider !== provider) {
       modelControl.combobox.close();
       modelControl.group.dataset.provider = provider;
     }
-    const providers = [...new Set(catalog.map((model) => model.provider_id))];
-    if (provider && !providers.includes(provider)) providers.push(provider);
     providerControl.update(
       providers.map((value) => [value, providerNames.get(value) || value]),
       provider,
     );
     providerControl.select.disabled = disabled;
+    const matchingModels = catalog.filter((m) => m.provider_id === provider);
+    const selectedModelName = providerDraft
+      ? (matchingModels[0]?.model_name || "")
+      : (record?.session?.model_name || matchingModels[0]?.model_name || "");
     modelControl.update(
-      providerDraft ? "" : record?.session?.model_name || "",
+      selectedModelName,
       disabled,
     );
     modelControl.input.placeholder = "Choose a model";
@@ -1749,7 +1778,14 @@
   });
   window.CodeSessions = {
     setProviderNames(providers) {
-      providerNames = new Map(providers.map((provider) => [provider.provider_id, provider.display_name]));
+      providerNames = new Map(DEFAULT_PROVIDER_NAMES);
+      if (Array.isArray(providers)) {
+        for (const provider of providers) {
+          if (provider?.provider_id) {
+            providerNames.set(provider.provider_id, provider.display_name || provider.provider_id);
+          }
+        }
+      }
     },
     initialize(client) {
       api = client;

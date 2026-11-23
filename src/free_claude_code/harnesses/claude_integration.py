@@ -11,7 +11,11 @@ from typing import cast
 from free_claude_code.config.server_urls import same_proxy_url
 from free_claude_code.core.json_types import JsonObject
 from free_claude_code.harnesses.claude import claude_proxy_values
-from free_claude_code.harnesses.config_file import atomic_write_text, decode_json
+from free_claude_code.harnesses.config_file import (
+    atomic_write_text,
+    decode_json,
+    read_config_text,
+)
 
 _ENV = "claudeCode.environmentVariables"
 _LOGIN = "claudeCode.disableLoginPrompt"
@@ -21,20 +25,46 @@ def settings_path() -> Path:
     """Locate the current user's standard native VS Code settings."""
     home = Path.home()
     if sys.platform == "win32":
-        root = Path(os.environ.get("APPDATA") or home / "AppData/Roaming")
+        appdata = Path(os.environ.get("APPDATA") or home / "AppData/Roaming")
+        candidates = [
+            appdata / "Code/User/settings.json",
+            appdata / "Code - Insiders/User/settings.json",
+            appdata / "VSCodium/User/settings.json",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        return candidates[0]
     elif sys.platform == "darwin":
-        root = home / "Library/Application Support"
+        support = home / "Library/Application Support"
+        candidates = [
+            support / "Code/User/settings.json",
+            support / "Code - Insiders/User/settings.json",
+            support / "VSCodium/User/settings.json",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        return candidates[0]
     else:
         root = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
         if not root.is_absolute():
             root = home / ".config"
-    return root / "Code/User/settings.json"
+        candidates = [
+            root / "Code/User/settings.json",
+            root / "Code - Insiders/User/settings.json",
+            root / "VSCodium/User/settings.json",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        return candidates[0]
 
 
 def _read_object(path: Path) -> JsonObject:
     try:
-        source = path.read_text(encoding="utf-8-sig")
-    except FileNotFoundError:
+        source = read_config_text(path, encoding="utf-8-sig")
+    except (FileNotFoundError, OSError):
         return {}
     document = decode_json(source)
     if not isinstance(document, dict):
