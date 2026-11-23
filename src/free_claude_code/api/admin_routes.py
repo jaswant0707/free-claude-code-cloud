@@ -95,8 +95,15 @@ class ConnectedAccountLoginPayload(BaseModel):
 
 
 def _asset_path(filename: str) -> Path:
-    asset_dir = PACKAGE_ASSETS_DIR if filename == "app-icon.svg" else STATIC_DIR
-    path = asset_dir / filename
+    if filename == "app-icon.svg":
+        path = STATIC_DIR / filename
+        if path.is_file():
+            return path
+        path = PACKAGE_ASSETS_DIR / filename
+        if path.is_file():
+            return path
+        raise HTTPException(status_code=404, detail="Admin asset not found")
+    path = STATIC_DIR / filename
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Admin asset not found")
     return path
