@@ -70,14 +70,13 @@ def _unique_json_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-@router.post("/v1beta/models/{resource:path}")
-@router.post("/v1/models/{resource:path}")
+@router.post("/v1beta/models/{resource:path}", dependencies=[Depends(require_gemini_proxy_auth)])
+@router.post("/v1/models/{resource:path}", dependencies=[Depends(require_gemini_proxy_auth)])
 async def create_gemini_response(
     resource: str,
     request: Request,
     request_data: Annotated[dict[str, Any], Body()],
     services: ApiServices = Depends(get_services),
-    _auth=Depends(require_gemini_proxy_auth),
 ):
     try:
         json.loads(await request.body(), object_pairs_hook=_unique_json_fields)
@@ -143,12 +142,11 @@ def _provider_resolver(lease: RequestRuntimeLease) -> ProviderResolver:
     )
 
 
-@router.post("/v1/chat/completions")
+@router.post("/v1/chat/completions", dependencies=[Depends(require_proxy_auth)])
 async def create_chat_completion(
     request: Request,
     request_data: ChatRequest,
     services: ApiServices = Depends(get_services),
-    _auth=Depends(require_proxy_auth),
 ):
     uk_info = getattr(request.state, "universal_key", None)
     key_def_model = uk_info.get("default_model") if uk_info else None
@@ -296,12 +294,11 @@ def _probe_response(allow: str) -> Response:
     return Response(status_code=204, headers={"Allow": allow})
 
 
-@router.post("/v1/messages")
+@router.post("/v1/messages", dependencies=[Depends(require_anthropic_proxy_auth)])
 async def create_message(
     request: Request,
     request_data: Annotated[dict[str, Any], Body()],
     services: ApiServices = Depends(get_services),
-    _auth=Depends(require_anthropic_proxy_auth),
 ):
     """Create a message (JSON by default; stream=true returns Anthropic SSE)."""
     uk_info = getattr(request.state, "universal_key", None)
@@ -326,12 +323,11 @@ async def probe_messages(_auth=Depends(require_anthropic_proxy_auth)):
     return _probe_response("POST, HEAD, OPTIONS")
 
 
-@router.post("/v1/responses")
+@router.post("/v1/responses", dependencies=[Depends(require_proxy_auth)])
 async def create_response(
     request: Request,
     request_data: OpenAIResponsesRequest,
     services: ApiServices = Depends(get_services),
-    _auth=Depends(require_proxy_auth),
 ):
     """Create an OpenAI Responses-compatible response through this proxy."""
     uk_info = getattr(request.state, "universal_key", None)
@@ -354,12 +350,11 @@ async def probe_responses(_auth=Depends(require_proxy_auth)):
     return _probe_response("POST, HEAD, OPTIONS")
 
 
-@router.post("/v1/messages/count_tokens")
+@router.post("/v1/messages/count_tokens", dependencies=[Depends(require_anthropic_proxy_auth)])
 async def count_tokens(
     request: Request,
     request_data: Annotated[dict[str, Any], Body()],
     services: ApiServices = Depends(get_services),
-    _auth=Depends(require_anthropic_proxy_auth),
 ):
     """Count tokens for a request."""
     lease = await services.requests.acquire()

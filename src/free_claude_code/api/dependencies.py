@@ -64,6 +64,41 @@ def is_proxy_auth_required(settings: Settings) -> bool:
     return False
 
 
+def _extract_proxy_credential(request: Request) -> tuple[str | None, bool]:
+    """Extract proxy credential from Authorization, x-api-key, or api-key headers.
+    
+    Returns (cleaned_token, had_bearer_prefix).
+    """
+    # 1. Check Authorization header
+    auth = request.headers.get("authorization")
+    if auth:
+        auth_clean = auth.strip()
+        if auth_clean.lower().startswith("bearer "):
+            token = auth_clean[7:].strip().strip("'\"")
+            if token:
+                return token, True
+        # Direct token in Authorization header without Bearer prefix
+        token = auth_clean.strip("'\"")
+        if token:
+            return token, False
+
+    # 2. Check x-api-key header (standard Anthropic & external gateway client header)
+    x_api_key = request.headers.get("x-api-key")
+    if x_api_key:
+        token = x_api_key.strip().strip("'\"")
+        if token:
+            return token, False
+
+    # 3. Check api-key header
+    api_key = request.headers.get("api-key")
+    if api_key:
+        token = api_key.strip().strip("'\"")
+        if token:
+            return token, False
+
+    return None, False
+
+
 def require_proxy_auth(
     request: Request,
     settings: Settings = Depends(get_settings),
@@ -72,17 +107,18 @@ def require_proxy_auth(
     if not is_proxy_auth_required(settings):
         return
 
-    authorization = request.headers.get("authorization")
-    if authorization is None:
+    token, had_bearer = _extract_proxy_credential(request)
+    if not token:
         raise HTTPException(
             status_code=401,
             detail="Missing proxy authentication token",
         )
 
-    if not _proxy_token_matches(
-        authorization,
+    if not _validate_proxy_token(
+        token,
         settings.proxy_auth_token,
-        require_bearer=True,
+        require_bearer=False if token.startswith("fcc_uk_") else True,
+        had_bearer=had_bearer,
         request=request,
     ):
         raise HTTPException(
@@ -99,31 +135,18 @@ def require_anthropic_proxy_auth(
     if not is_proxy_auth_required(settings):
         return
 
-    authorization = request.headers.get("authorization")
-    if authorization is not None:
-        if _proxy_token_matches(
-            authorization,
-            settings.proxy_auth_token,
-            require_bearer=True,
-            request=request,
-        ):
-            return
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid proxy authentication token",
-        )
-
-    x_api_key = request.headers.get("x-api-key")
-    if x_api_key is None:
+    token, had_bearer = _extract_proxy_credential(request)
+    if not token:
         raise HTTPException(
             status_code=401,
             detail="Missing proxy authentication token",
         )
 
-    if not _proxy_token_matches(
-        x_api_key,
+    if not _validate_proxy_token(
+        token,
         settings.proxy_auth_token,
         require_bearer=False,
+        had_bearer=had_bearer,
         request=request,
     ):
         raise HTTPException(
@@ -143,53 +166,55 @@ def require_gemini_proxy_auth(
         )
     if not is_proxy_auth_required(settings):
         return
-    credential = request.headers.get("authorization")
-    bearer = credential is not None
-    if credential is None:
-        credential = request.headers.get("x-goog-api-key")
-    if credential is None:
-        credential = keys[0] if keys else None
-    if credential is None:
+
+    token, had_bearer = _extract_proxy_credential(request)
+    if token is None:
+        raw_key = request.headers.get("x-goog-api-key") or (keys[0] if keys else None)
+        if raw_key:
+            token = raw_key.strip().strip("'\"")
+            had_bearer = False
+
+    if not token:
         raise HTTPException(
             status_code=401, detail="Missing proxy authentication token"
         )
-    if not _proxy_token_matches(
-        credential, settings.proxy_auth_token, require_bearer=bearer, request=request
+
+    if not _validate_proxy_token(
+        token,
+        settings.proxy_auth_token,
+        require_bearer=False,
+        had_bearer=had_bearer,
+        request=request,
     ):
         raise HTTPException(
             status_code=401, detail="Invalid proxy authentication token"
         )
 
 
-def _proxy_token_matches(
-    credential: str,
+def _validate_proxy_token(
+    token: str,
     configured_token: str,
     *,
-    require_bearer: bool,
+    require_bearer: bool = False,
+    had_bearer: bool = False,
     request: Request | None = None,
 ) -> bool:
-    token = credential.strip()
-    if require_bearer:
-        parts = token.split(maxsplit=1)
-        if len(parts) != 2 or parts[0].casefold() != "bearer":
-            return False
-        token = parts[1].strip()
-
-    if not token:
+    clean_token = token.strip().strip("'\"")
+    if not clean_token:
         return False
 
     from .admin_security import is_cloud_environment, is_valid_admin_token
 
     # Admin tokens are strictly disallowed from authenticating as proxy tokens
-    if is_valid_admin_token(token):
+    if is_valid_admin_token(clean_token):
         return False
 
-    # Check active Universal Key
-    if token.startswith("fcc_uk_"):
+    # Check active Universal Key (fcc_uk_ prefix)
+    if clean_token.startswith("fcc_uk_"):
         try:
             from free_claude_code.persistence.universal_keys import verify_universal_key
 
-            key_info = verify_universal_key(token)
+            key_info = verify_universal_key(clean_token)
             if key_info is not None:
                 if request is not None:
                     request.state.universal_key = key_info
@@ -197,6 +222,10 @@ def _proxy_token_matches(
             return False
         except Exception:
             return False
+
+    # If endpoint strictly requires Bearer prefix for legacy proxy tokens
+    if require_bearer and not had_bearer:
+        return False
 
     is_cloud = is_cloud_environment()
     valid_tokens: list[str] = []
@@ -239,6 +268,29 @@ def _proxy_token_matches(
         valid_tokens.append(configured_token)
 
     return any(
-        secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
+        secrets.compare_digest(clean_token.encode("utf-8"), expected.encode("utf-8"))
         for expected in valid_tokens
+    )
+
+
+def _proxy_token_matches(
+    credential: str,
+    configured_token: str,
+    *,
+    require_bearer: bool,
+    request: Request | None = None,
+) -> bool:
+    """Backward-compatible wrapper for credential string matching."""
+    token = credential.strip()
+    had_bearer = False
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+        had_bearer = True
+
+    return _validate_proxy_token(
+        token,
+        configured_token,
+        require_bearer=require_bearer,
+        had_bearer=had_bearer,
+        request=request,
     )

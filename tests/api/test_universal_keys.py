@@ -401,3 +401,97 @@ def test_models_list_advertises_universal_model(uk_app):
     assert "free-claude-universal" in model_ids
 
 
+def test_proxy_auth_header_formats_and_quotes(uk_app):
+    """Proxy endpoints accept Universal Keys via Bearer, raw Authorization, x-api-key, and api-key."""
+    client = TestClient(uk_app, base_url="https://cloud.example.com")
+    mock_client = MagicMock()
+    mock_client.is_configured = True
+    mock_client.verify_universal_key.return_value = {
+        "id": "uk-123",
+        "name": "Format Test Key",
+        "is_active": True,
+        "default_model": None,
+    }
+
+    raw_key = "fcc_uk_111122223333444455556666"
+
+    with patch("free_claude_code.persistence.universal_keys.get_supabase_client", return_value=mock_client):
+        # 1. Authorization: Bearer <key>
+        r1 = client.get("/v1/models", headers={"Authorization": f"Bearer {raw_key}"})
+        assert r1.status_code == 200
+
+        # 2. Authorization: <key> (raw without Bearer)
+        r2 = client.get("/v1/models", headers={"Authorization": raw_key})
+        assert r2.status_code == 200
+
+        # 3. x-api-key: <key>
+        r3 = client.get("/v1/models", headers={"x-api-key": raw_key})
+        assert r3.status_code == 200
+
+        # 4. api-key: <key>
+        r4 = client.get("/v1/models", headers={"api-key": raw_key})
+        assert r4.status_code == 200
+
+        # 5. Quoted Bearer "<key>"
+        r5 = client.get("/v1/models", headers={"Authorization": f'Bearer "{raw_key}"'})
+        assert r5.status_code == 200
+
+
+def test_chat_completions_parsing_and_error_handling(uk_app):
+    """Chat completions validates body, handles omitted model, and returns clear 400s."""
+    client = TestClient(uk_app, base_url="https://cloud.example.com")
+    mock_client = MagicMock()
+    mock_client.is_configured = True
+    mock_client.verify_universal_key.return_value = {
+        "id": "uk-test",
+        "name": "Parse Test Key",
+        "is_active": True,
+        "default_model": "test-provider/test-model",
+    }
+    raw_key = "fcc_uk_aabbccddeeff001122334455"
+
+    with patch("free_claude_code.persistence.universal_keys.get_supabase_client", return_value=mock_client):
+        # 1. Unauthenticated request with valid JSON fails with 401
+        r_unauth = client.post(
+            "/v1/chat/completions",
+            json={"model": "free-claude-universal", "messages": [{"role": "user", "content": "hi"}]},
+            headers={"Content-Type": "application/json"},
+        )
+        assert r_unauth.status_code == 401
+
+        # 2. Authenticated request with malformed JSON produces clear 400 error
+        r_bad_json = client.post(
+            "/v1/chat/completions",
+            content=b"{malformed json",
+            headers={
+                "Authorization": f"Bearer {raw_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        assert r_bad_json.status_code == 400
+        data_bad = r_bad_json.json()
+        assert "Invalid JSON in request body" in data_bad["error"]["message"]
+        assert data_bad["error"]["type"] == "invalid_request_error"
+
+        # 3. Authenticated request with empty body
+        r_empty = client.post(
+            "/v1/chat/completions",
+            content=b"",
+            headers={
+                "Authorization": f"Bearer {raw_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        assert r_empty.status_code == 400
+
+        # 4. Authenticated request missing required messages field
+        r_no_msg = client.post(
+            "/v1/chat/completions",
+            json={"model": "free-claude-universal"},
+            headers={"Authorization": f"Bearer {raw_key}"},
+        )
+        assert r_no_msg.status_code == 400
+        assert "messages" in r_no_msg.json()["error"]["message"]
+
+
+

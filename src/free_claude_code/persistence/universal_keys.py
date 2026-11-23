@@ -90,7 +90,8 @@ def verify_universal_key(raw_key: str) -> dict[str, Any] | None:
 
     try:
         data = client.verify_universal_key(key_h)
-        _KEY_VERIFY_CACHE[key_h] = (now, data)
+        if data is not None:
+            _KEY_VERIFY_CACHE[key_h] = (now, data)
         return data
     except Exception as exc:
         logger.warning("Error verifying universal key: {}", exc)

@@ -494,7 +494,44 @@ Full application regression suite: 11,519 passed, zero regressions.
 ## 9. Comprehensive Verification Checklist
 
 - [x] **Import Boundaries:** `tests/contracts/test_import_boundaries.py` 100% compliant (Clean Architecture preserved; `application` layer remains pure and does not import `persistence`).
-- [x] **Universal Keys Backend Tests:** `tests/api/test_universal_keys.py` 100% passing (11 unit/integration tests).
+- [x] **Universal Keys Backend Tests:** `tests/api/test_universal_keys.py` 100% passing (13 unit/integration tests).
 - [x] **SSE & Vercel Routing Tests:** `tests/api/test_sse_events.py` and `tests/api/test_vercel_routing.py` 100% passing.
 - [x] **Playwright E2E UI Tests:** `e2e/test_universal_keys_ui.py` 100% passing (Dashboard rendering + browser key creation and deletion).
+
+---
+
+### Issue 6: Universal API Key Authentication & OpenAI-Compatible Request Parsing Audit
+
+#### Root Causes Discovered
+
+1. **Root Cause of HTTP 401 ("Invalid proxy authentication token"):**
+   - **Deployment Timing & Key Availability:** The user's initial test occurred against deployment `dpl_5iduac8oKfreDyuxLyJ8eAsrzYCg` before commit `5012bfa5` had deployed. Under `dpl_5iduac8oKfreDyuxLyJ8eAsrzYCg`, the UI crashed with `TypeError: Cannot read properties of null` upon clicking Generate, preventing the full 55-character secret key from being displayed in the banner.
+   - **Prefix Confusion:** In the Section D table, a "Copy Prefix" button copied the 17-character key prefix (`fcc_uk_...` with dots). When callers passed this prefix into `Authorization: Bearer fcc_uk_...`, the token failed `is_universal_key_format` (`len < 24`) and SHA-256 hash lookup against `fcc_universal_keys`, resulting in HTTP 401.
+   - **Header Inflexibility:** `require_proxy_auth` strictly checked only `request.headers.get("authorization")` and required the exact prefix `Bearer `. Any caller passing credentials via `x-api-key`, `api-key`, direct unadorned `Authorization: fcc_uk_...`, or with surrounding quotes was rejected.
+   - **Negative Cache Poisoning:** `verify_universal_key` cached negative lookups (`data = None`) in memory for 15 seconds. If a lookup momentarily failed or an invalid key was queried, subsequent attempts with newly created keys were locked out.
+
+2. **Root Cause of HTTP 400 ("body.1: JSON decode error"):**
+   - **FastAPI / Pydantic Location Semantics:** `body.1` is **not an ASGI stream chunk or database error**. In Pydantic v2, syntax errors during JSON decoding emit error type `json_invalid` with `loc: ('body', 1)`, where `body` is the request payload and `1` is the character offset where JSON decoding failed.
+   - **PowerShell 5.1 Argument Tokenization:** When executing `curl.exe` from Windows PowerShell 5.1 with single quotes `-d '{"model":"free-claude-universal",...}'`, PowerShell's command parser strips unescaped double quotes when dispatching to external binaries. `curl.exe` received `{model:free-claude-universal,...}` without quotes around property names. At byte index 1 (the letter `m`), Pydantic expected a double quote, emitting `loc: ('body', 1)` and `msg: 'JSON decode error'`, which the exception handler formatted as `body.1: JSON decode error`.
+   - **Dependency Evaluation Order:** In `create_chat_completion`, `request_data: ChatRequest` was evaluated before `_auth=Depends(require_proxy_auth)`. Consequently, malformed request bodies failed validation and triggered HTTP 400 before authentication could be evaluated.
+
+#### Architectural Fixes Delivered
+
+1. **Permissive Header & Credential Extraction (`dependencies.py`):**
+   - Implemented `_extract_proxy_credential(request)` accepting `Authorization` (with or without `Bearer `), `x-api-key`, and `api-key` headers.
+   - Automatically sanitizes surrounding whitespace, single quotes, and double quotes.
+   - Accepts active Universal Keys (`fcc_uk_`) with or without `Bearer ` prefix while preserving strict dual-boundary security (admin tokens remain barred from proxy endpoints).
+2. **Eliminated Negative Cache Poisoning (`universal_keys.py`):**
+   - Updated `verify_universal_key` to cache verification results **only when `data is not None`**. Transient errors or initial replication delays never poison the cache.
+3. **Route-Level Authentication Precedence (`routes.py`):**
+   - Attached `dependencies=[Depends(require_proxy_auth)]` directly to route decorators for `/v1/chat/completions` and `/v1/responses`, and `require_anthropic_proxy_auth` for `/v1/messages`. Authentication now evaluates at the HTTP boundary before body deserialization.
+4. **Model Optionality & Automatic Defaulting (`request.py`):**
+   - Updated `ChatRequest.model` to `Field(default="auto")`. When callers omit `model`, it defaults to `"auto"` and cleanly resolves via `resolve_incoming_model_request` to the Universal Default Model or per-key default model.
+5. **Descriptive JSON Syntax Error Formatting (`app.py`):**
+   - Intercepted `json_invalid` errors in `validation_error_handler`, returning:
+     `Invalid JSON in request body: {ctx['error']}. Please ensure the request body is valid JSON with double-quoted property names and string values.`
+6. **Admin Dashboard Usability (`index.html` & `universal_keys.js`):**
+   - Added instant "Copy PowerShell Test" and "Copy cURL Test" buttons directly to the secret key creation banner with the raw key pre-filled.
+   - Clarified prefix copy buttons in the table to prevent users from mistaking the truncated prefix for the secret key.
+
 

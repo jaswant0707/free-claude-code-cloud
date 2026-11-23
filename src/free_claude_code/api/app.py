@@ -148,10 +148,21 @@ def create_app(services: ApiServices, *, app: FastAPI | None = None) -> FastAPI:
             tool_names=tool_names,
         )
         if generation_api(request.url.path) in {"gemini", "chat"}:
-            message = "; ".join(
-                f"{'.'.join(map(str, error['loc']))}: {error['msg']}"
-                for error in exc.errors()
-            )
+            formatted_errors = []
+            for error in exc.errors():
+                loc = error.get("loc", ())
+                err_type = error.get("type", "")
+                err_msg = error.get("msg", "")
+                if err_type == "json_invalid":
+                    ctx = error.get("ctx", {})
+                    detail_str = ctx.get("error", err_msg)
+                    formatted_errors.append(
+                        f"Invalid JSON in request body: {detail_str}. Please ensure the request body is valid JSON with double-quoted property names and string values."
+                    )
+                else:
+                    loc_str = ".".join(map(str, loc))
+                    formatted_errors.append(f"{loc_str}: {err_msg}")
+            message = "; ".join(formatted_errors)
             return JSONResponse(
                 status_code=400,
                 content=gemini_error_payload(400, message)

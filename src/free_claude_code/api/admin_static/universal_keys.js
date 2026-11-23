@@ -282,8 +282,37 @@
     });
 
     tbody.querySelectorAll(".uk-copy-prefix-btn").forEach((btn) => {
-      btn.addEventListener("click", () => copyToClipboard(btn.dataset.prefix, btn, "Copied!"));
+      btn.addEventListener("click", () => copyToClipboard(btn.dataset.prefix, btn, "Prefix Copied!"));
     });
+  }
+
+  function copyBannerPsSnippet() {
+    if (!state.rawKeyGenerated) return;
+    const baseUrl = getApiBaseUrl();
+    const alias = (state.universalModel && state.universalModel.alias) || "free-claude-universal";
+    const snippet = `$headers = @{
+    "Authorization" = "Bearer ${state.rawKeyGenerated}"
+    "Content-Type" = "application/json"
+}
+$body = @{
+    model = "${alias}"
+    messages = @(
+        @{
+            role = "user"
+            content = "Reply with OK"
+        }
+    )
+} | ConvertTo-Json -Depth 10
+Invoke-RestMethod -Uri "${baseUrl}/chat/completions" -Method POST -Headers $headers -Body $body`;
+    copyToClipboard(snippet, byId("ukBannerCopyPsBtn"), "PS Test Copied!");
+  }
+
+  function copyBannerCurlSnippet() {
+    if (!state.rawKeyGenerated) return;
+    const baseUrl = getApiBaseUrl();
+    const alias = (state.universalModel && state.universalModel.alias) || "free-claude-universal";
+    const snippet = `curl.exe -i -X POST "${baseUrl}/chat/completions" -H "Authorization: Bearer ${state.rawKeyGenerated}" -H "Content-Type: application/json" -d "{\\"model\\":\\"${alias}\\",\\"messages\\":[{\\"role\\":\\"user\\",\\"content\\":\\"Reply with OK\\"}]}"`;
+    copyToClipboard(snippet, byId("ukBannerCopyCurlBtn"), "cURL Test Copied!");
   }
 
   async function handleCreateKey(e) {
@@ -390,6 +419,14 @@
     const copyBtn = byId("ukCopyBtn");
     if (copyBtn) {
       copyBtn.addEventListener("click", copySecretKey);
+    }
+    const copyPsBtn = byId("ukBannerCopyPsBtn");
+    if (copyPsBtn) {
+      copyPsBtn.addEventListener("click", copyBannerPsSnippet);
+    }
+    const copyCurlTestBtn = byId("ukBannerCopyCurlBtn");
+    if (copyCurlTestBtn) {
+      copyCurlTestBtn.addEventListener("click", copyBannerCurlSnippet);
     }
     const dismissBannerBtn = byId("ukDismissBannerBtn");
     if (dismissBannerBtn) {

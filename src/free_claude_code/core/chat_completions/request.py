@@ -19,7 +19,7 @@ class ChatConversionError(ValueError):
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="allow", strict=True, allow_inf_nan=False)
 
-    model: str = Field(min_length=1)
+    model: str = Field(default="auto")
     messages: list[JsonObject] = Field(min_length=1)
     stream: bool = False
     reasoning_effort: str | None = None
@@ -33,8 +33,8 @@ class ChatRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_messages(self) -> Self:
-        if not self.model.strip():
-            raise ValueError("model must not be blank")
+        if not self.model or not self.model.strip():
+            self.model = "auto"
         if self.stream_options is not None and (
             "include_usage" in self.stream_options
             and not isinstance(self.stream_options["include_usage"], (bool, type(None)))
